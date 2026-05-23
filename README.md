@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎨 GPT Image Playground
+# 🎨 GPT Image
 
 [![GitHub Repo stars](https://img.shields.io/github/stars/CookSleep/gpt_image_playground?style=flat-square&color=eab308)](https://github.com/CookSleep/gpt_image_playground/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/CookSleep/gpt_image_playground?style=flat-square&color=3b82f6)](https://github.com/CookSleep/gpt_image_playground/network/members)
@@ -55,13 +55,6 @@
 <br>
 
 <div align="center">
-  <b>桌面端 Agent 模式</b><br>
-  <img src="docs/images/example_pc_4.jpg" alt="桌面端 Agent 模式" />
-</div>
-
-<br>
-
-<div align="center">
   <b>移动端主界面</b><br>
   <img src="docs/images/example_mb_1.jpg" alt="移动端主界面" width="420" />
 </div>
@@ -84,13 +77,6 @@
 - **参考图与遮罩**：支持上传最多 16 张参考图（支持剪贴板和拖拽）。内置可视化遮罩编辑器，自动预处理以符合官方分辨率限制。
 - **批量与迭代**：支持单次多图生成；一键将满意结果转为参考图，无缝开启下一轮修改。
 - **流式生成预览**：Responses API 模式下支持流式接收图像，缓解连接超时问题。
-
-### 🤖 Agent 多轮对话模式
-- **多轮对话与上下文记忆**：基于 Responses API 的对话式生成，Agent 会理解上下文并按需调用图像工具；支持 `@` 引用参考图或前面轮次生成的图片，并自动识别上下文中的图片。
-- **并发批量生成**：内置 `generate_image_batch` 工具，让 Agent 在一次轮次中并发生成多张关联图像，并通过 `continue_generation` 自动追加新一轮以处理依赖关系。
-- **分支与重新生成**：编辑某轮消息重新发送或重新生成某轮消息会产生可切换的分支，引用解析严格限定在当前分支路径内，避免误用其他分支的图片。
-- **画廊同步与隔离删除**：Agent 生成的图片会同步到画廊；删除对话默认保留画廊记录，删除画廊任务时也会自动清理对话中残留的图片引用。
-- **可选 Web 搜索**：可开启 `web_search` 工具，Agent 会在需要时搜索网络信息并附带引用链接。
 
 ### ⚙️ 精细化参数追踪
 - **智能尺寸控制**：提供 1K/2K/4K 快速预设，自定义宽高时会自动规整至模型安全范围（16 的倍数、总像素校验等）。
