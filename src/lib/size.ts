@@ -102,8 +102,14 @@ export function formatImageRatio(width: number, height: number) {
     [3, 4],
     [3, 2],
     [2, 3],
+    [5, 4],
+    [4, 5],
     [16, 9],
     [9, 16],
+    [2, 1],
+    [1, 2],
+    [3, 1],
+    [1, 3],
     [21, 9],
     [9, 21],
   ]
@@ -202,4 +208,34 @@ export function calculateImageSize(tier: SizeTier, ratio: string) {
 
   if (bestPixels === 0) return null
   return `${bestWidth}x${bestHeight}`
+}
+
+export function isSupported4KRatio(sizeStr: string): boolean {
+  if (!sizeStr || sizeStr === 'auto') return false
+  const match = sizeStr.trim().match(/^\s*(\d+)\s*[xX×]\s*(\d+)\s*$/)
+  if (!match) return false
+  const w = Number(match[1])
+  const h = Number(match[2])
+  if (w <= 0 || h <= 0) return false
+
+  const ratioStr = formatImageRatio(w, h)
+  const cleanRatio = ratioStr.replace(/^≈/, '')
+  const supported = [
+    '1:1',
+    '3:2',
+    '2:3',
+    '4:3',
+    '3:4',
+    '5:4',
+    '4:5',
+    '16:9',
+    '9:16',
+    '2:1',
+    '1:2',
+    '3:1',
+    '1:3',
+    '21:9',
+    '9:21',
+  ]
+  return supported.includes(cleanRatio)
 }

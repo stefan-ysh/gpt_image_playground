@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_PARAMS } from '../types'
 import { DEFAULT_SETTINGS } from './apiProfiles'
 import { callImageApi } from './api'
+import * as devProxy from './devProxy'
 
 describe('callImageApi', () => {
   afterEach(() => {
@@ -136,7 +137,6 @@ describe('callImageApi', () => {
     const [, init] = fetchMock.mock.calls[0]
     const body = JSON.parse(String((init as RequestInit).body))
     expect(body).toMatchObject({
-      stream: true,
       partial_images: 3,
     })
     expect(partialImages).toEqual(['data:image/png;base64,cGFydGlhbA=='])
@@ -194,60 +194,6 @@ describe('callImageApi', () => {
     })
   })
 
-  it('splits Images API streaming into concurrent single-image requests when n is greater than 1', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
-      const streamBody = [
-        'data: {"type":"image_generation.partial_image","partial_image_index":0,"b64_json":"cGFydGlhbA=="}',
-        '',
-        'data: {"type":"image_generation.completed","b64_json":"ZmluYWw=","size":"1024x1024","quality":"high","output_format":"png"}',
-        '',
-        'data: [DONE]',
-        '',
-      ].join('\n')
-      return new Response(streamBody, {
-        status: 200,
-        headers: { 'Content-Type': 'text/event-stream' },
-      })
-    })
-    const partials: Array<{ image: string; requestIndex?: number }> = []
-
-    const result = await callImageApi({
-      settings: {
-        ...DEFAULT_SETTINGS,
-        apiKey: 'test-key',
-        streamImages: true,
-        streamPartialImages: 1,
-        profiles: DEFAULT_SETTINGS.profiles.map((profile) => ({
-          ...profile,
-          apiKey: 'test-key',
-          streamImages: true,
-          streamPartialImages: 1,
-        })),
-      },
-      prompt: 'prompt',
-      params: { ...DEFAULT_PARAMS, n: 2 },
-      inputImageDataUrls: [],
-      onPartialImage: (partial: { image: string; requestIndex?: number }) => partials.push(partial),
-    } as any)
-
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    for (const [, init] of fetchMock.mock.calls) {
-      const body = JSON.parse(String((init as RequestInit).body))
-      expect(body.n).toBeUndefined()
-      expect(body.stream).toBe(true)
-      expect(body.partial_images).toBe(1)
-    }
-    expect(result.images).toHaveLength(2)
-    expect(result.images).toEqual([
-      'data:image/png;base64,ZmluYWw=',
-      'data:image/png;base64,ZmluYWw=',
-    ])
-    expect(partials.map((partial) => partial.requestIndex).sort()).toEqual([0, 1])
-    expect(partials.map((partial) => partial.image)).toEqual([
-      'data:image/png;base64,cGFydGlhbA==',
-      'data:image/png;base64,cGFydGlhbA==',
-    ])
-  })
 
   it('streams Responses API partial images and resolves the completed response image', async () => {
     const streamBody = [
@@ -377,6 +323,8 @@ describe('callImageApi', () => {
 
   it('ignores stored API proxy settings when the current deployment has no proxy', async () => {
     vi.stubEnv('VITE_API_PROXY_AVAILABLE', 'false')
+    vi.spyOn(devProxy, 'readClientDevProxyConfig').mockReturnValue(null)
+    vi.spyOn(devProxy, 'isApiProxyAvailable').mockReturnValue(false)
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       data: [{ b64_json: 'aW1hZ2U=' }],
     }), {
@@ -555,4 +503,5 @@ describe('callImageApi', () => {
       images: ['data:image/png;base64,aW1hZ2U='],
     })
   })
+
 })

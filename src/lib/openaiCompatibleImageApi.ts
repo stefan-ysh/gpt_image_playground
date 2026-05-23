@@ -1,11 +1,13 @@
-import { DEFAULT_STREAM_PARTIAL_IMAGES, type ApiProfile, type CustomProviderDefinition, type CustomProviderPollMapping, type CustomProviderResultMapping, type CustomProviderSubmitMapping, type ImageApiResponse, type ImageResponseItem, type ResponsesApiResponse, type ResponsesOutputItem, type TaskParams } from '../types'
-import { dataUrlToBlob, imageDataUrlToPngBlob, maskDataUrlToPngBlob } from './canvasImage'
-import { buildApiUrl, readClientDevProxyConfig, shouldUseApiProxy } from './devProxy'
+import { DEFAULT_STREAM_PARTIAL_IMAGES } from '../types'
+
+import type { ApiProfile, CustomProviderDefinition, CustomProviderPollMapping, CustomProviderResultMapping, CustomProviderSubmitMapping, ImageApiResponse, ImageResponseItem, ResponsesApiResponse, ResponsesOutputItem, TaskParams } from '../types'
+import { dataUrlToBlob, imageDataUrlToPngBlob, maskDataUrlToPngBlob, createMaskPreviewDataUrl } from './canvasImage'
+import { APIMART_PROVIDER_ID, getCustomProviderDefinition } from './apiProfiles'
+import { formatImageRatio } from './size'
+import { buildApiUrl, readClientDevProxyConfig, shouldUseApiProxy, getProxyImageUrl } from './devProxy'
 import {
   assertImageInputPayloadSize,
   assertMaskEditFileSize,
-  type CallApiOptions,
-  type CallApiResult,
   fetchImageUrlAsDataUrl,
   getApiErrorMessage,
   getDataUrlDecodedByteSize,
@@ -17,6 +19,8 @@ import {
   normalizeBase64Image,
   pickActualParams,
 } from './imageApiShared'
+
+import type { CallApiOptions, CallApiResult } from './imageApiShared'
 
 const PROMPT_REWRITE_GUARD_PREFIX = 'Use the following text as the complete prompt. Do not rewrite it:'
 
@@ -433,8 +437,13 @@ async function parseResponsesApiStreamResponse(
 }
 
 export async function callOpenAICompatibleImageApi(opts: CallApiOptions, profile: ApiProfile, customProvider?: CustomProviderDefinition | null): Promise<CallApiResult> {
-  if (customProvider) {
-    return callCustomHttpImageApi(opts, profile, customProvider)
+  let activeCustomProvider = customProvider
+  if (!activeCustomProvider && profile.baseUrl && (profile.baseUrl.toLowerCase().includes('dragoncode.codes/gpt-image') || profile.baseUrl.toLowerCase().includes('api.apimart.ai'))) {
+    activeCustomProvider = getCustomProviderDefinition(opts.settings, APIMART_PROVIDER_ID)
+  }
+
+  if (activeCustomProvider) {
+    return callCustomHttpImageApi(opts, profile, activeCustomProvider)
   }
 
   return profile.apiMode === 'responses'
@@ -443,56 +452,7 @@ export async function callOpenAICompatibleImageApi(opts: CallApiOptions, profile
 }
 
 async function callImagesApi(opts: CallApiOptions, profile: ApiProfile, customProvider?: CustomProviderDefinition | null): Promise<CallApiResult> {
-  const n = opts.params.n > 0 ? opts.params.n : 1
-  if ((profile.codexCli || (profile.streamImages && n > 1)) && n > 1) {
-    return callImagesApiConcurrent(opts, profile, n, customProvider)
-  }
-
   return callImagesApiSingle(opts, profile, customProvider)
-}
-
-async function callImagesApiConcurrent(opts: CallApiOptions, profile: ApiProfile, n: number, customProvider?: CustomProviderDefinition | null): Promise<CallApiResult> {
-  const singleOpts = {
-    ...opts,
-    params: {
-      ...opts.params,
-      n: 1,
-      ...(profile.codexCli ? { quality: 'auto' as const } : {}),
-    },
-  }
-  const results = await Promise.allSettled(
-    Array.from({ length: n }).map((_, requestIndex) => callImagesApiSingle({
-      ...singleOpts,
-      onPartialImage: opts.onPartialImage
-        ? (partial) => opts.onPartialImage?.({ ...partial, requestIndex })
-        : undefined,
-    }, profile, customProvider)),
-  )
-
-  const successfulResults = results
-    .filter((r): r is PromiseFulfilledResult<CallApiResult> => r.status === 'fulfilled')
-    .map((r) => r.value)
-
-  if (successfulResults.length === 0) {
-    const firstError = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
-    if (firstError) throw firstError.reason
-    throw new Error('所有并发请求均失败')
-  }
-
-  const images = successfulResults.flatMap((r) => r.images)
-  const actualParamsList = successfulResults.flatMap((r) =>
-    r.actualParamsList?.length ? r.actualParamsList : r.images.map(() => r.actualParams),
-  )
-  const revisedPrompts = successfulResults.flatMap((r) =>
-    r.revisedPrompts?.length ? r.revisedPrompts : r.images.map(() => undefined),
-  )
-  const rawImageUrls = successfulResults.flatMap((r) => r.rawImageUrls ?? [])
-  const actualParams = mergeActualParams(
-    successfulResults[0]?.actualParams ?? {},
-    { n: images.length },
-  )
-
-  return { images, actualParams, actualParamsList, revisedPrompts, ...(rawImageUrls.length ? { rawImageUrls } : {}) }
 }
 
 async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, customProvider?: CustomProviderDefinition | null): Promise<CallApiResult> {
@@ -503,7 +463,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
   const isEdit = inputImageDataUrls.length > 0
   const mime = MIME_MAP[params.output_format] || 'image/png'
   const proxyConfig = readClientDevProxyConfig()
-  const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig)
+  const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig, profile.provider, profile.baseUrl)
   const requestHeaders = createRequestHeaders(profile)
   const paths = createOpenAICompatiblePaths(customProvider)
 
@@ -528,14 +488,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
       if (params.output_format !== 'png' && params.output_compression != null) {
         formData.append('output_compression', String(params.output_compression))
       }
-      if (params.n > 1) {
-        formData.append('n', String(params.n))
-      }
-      if (profile.responseFormatB64Json) {
-        formData.append('response_format', 'b64_json')
-      }
       if (profile.streamImages) {
-        formData.append('stream', 'true')
         formData.append('partial_images', String(getStreamPartialImages(profile)))
       }
 
@@ -590,14 +543,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
       if (params.output_format !== 'png' && params.output_compression != null) {
         body.output_compression = params.output_compression
       }
-      if (params.n > 1) {
-        body.n = params.n
-      }
-      if (profile.responseFormatB64Json) {
-        body.response_format = 'b64_json'
-      }
       if (profile.streamImages) {
-        body.stream = true
         body.partial_images = getStreamPartialImages(profile)
       }
 
@@ -682,10 +628,28 @@ function resolveTemplateValue(value: unknown, context: Record<string, unknown>):
 }
 
 function createCustomProviderContext(opts: CallApiOptions, profile: ApiProfile) {
+  // 将像素尺寸（如 "3840x1648"）转换为比例字符串（如 "16:9"），供 APIMart 等 API 使用
+  const rawSize = opts.params.size ?? ''
+  let sizeRatio = rawSize
+  if (rawSize && rawSize !== 'auto') {
+    const match = rawSize.trim().match(/^(\d+)\s*[xX×]\s*(\d+)$/)
+    if (match) {
+      const w = Number(match[1])
+      const h = Number(match[2])
+      // formatImageRatio 可能返回 ≈ 前缀，需去除
+      sizeRatio = formatImageRatio(w, h).replace(/^≈/, '')
+    }
+  }
+
   return {
     profile,
     prompt: opts.prompt,
-    params: opts.params,
+    params: {
+      ...opts.params,
+      resolution: opts.params.quality === 'low' ? '1k' : opts.params.quality === 'high' ? '4k' : '2k',
+      sizeRatio,
+      official_fallback: false,
+    },
     inputImages: {
       dataUrls: opts.inputImageDataUrls.length ? opts.inputImageDataUrls : undefined,
       count: opts.inputImageDataUrls.length,
@@ -751,11 +715,13 @@ async function createCustomMultipartBody(mapping: CustomProviderSubmitMapping, o
   return formData
 }
 
-async function extractCustomImages(payload: unknown, result: CustomProviderResultMapping, mime: string, signal?: AbortSignal): Promise<CallApiResult> {
+async function extractCustomImages(payload: unknown, result: CustomProviderResultMapping, mime: string, profile: ApiProfile, signal?: AbortSignal): Promise<CallApiResult> {
   const images: string[] = []
-  const imageUrls = (result.imageUrlPaths ?? []).flatMap((path) =>
+  const rawImageUrlsList = (result.imageUrlPaths ?? []).flatMap((path) =>
     getAllByPath(payload, path).filter((value): value is string => isHttpUrl(value) || isDataUrl(value)),
   )
+  // 对提取到的 URL 进行去重，避免重复的匹配路径导致同一张图片被提取渲染多次
+  const imageUrls = Array.from(new Set(rawImageUrlsList))
   const rawImageUrls = imageUrls.filter(isHttpUrl)
   try {
     for (const path of result.b64JsonPaths ?? []) {
@@ -763,8 +729,15 @@ async function extractCustomImages(payload: unknown, result: CustomProviderResul
         if (typeof value === 'string' && value.trim()) images.push(normalizeBase64Image(value, mime))
       }
     }
-    for (const url of imageUrls) {
-      images.push(await fetchImageUrlAsDataUrl(url, mime, signal))
+    if (imageUrls.length > 0) {
+      // 使用 Promise.all 并行下载多张图片以大幅缩短生成后的 loading 等待时间
+      const downloaded = await Promise.all(
+        imageUrls.map((url) => {
+          const proxyUrl = getProxyImageUrl(url, profile)
+          return fetchImageUrlAsDataUrl(proxyUrl, mime, signal)
+        })
+      )
+      images.push(...downloaded)
     }
   } catch (err) {
     if (rawImageUrls.length > 0 && err instanceof Error) {
@@ -794,9 +767,6 @@ async function submitCustomRequest(mapping: CustomProviderSubmitMapping, opts: C
   if (method !== 'GET') {
     if (contentType === 'multipart') {
       const formData = await createCustomMultipartBody(mapping, opts, context)
-      if (profile.responseFormatB64Json) {
-        formData.append('response_format', 'b64_json')
-      }
       body = formData
     } else {
       assertImageInputPayloadSize(
@@ -805,14 +775,12 @@ async function submitCustomRequest(mapping: CustomProviderSubmitMapping, opts: C
       )
       headers['Content-Type'] = 'application/json'
       const resolved = resolveTemplateValue(mapping.body ?? {}, context)
-      if (profile.responseFormatB64Json && resolved && typeof resolved === 'object' && !Array.isArray(resolved)) {
-        (resolved as Record<string, unknown>).response_format = 'b64_json'
-      }
       body = JSON.stringify(resolved)
     }
   }
 
-  const response = await fetch(buildApiUrl(profile.baseUrl, path, proxyConfig, false), {
+  const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig, profile.provider, profile.baseUrl)
+  const response = await fetch(buildApiUrl(profile.baseUrl, path, proxyConfig, useApiProxy), {
     method,
     headers,
     cache: 'no-store',
@@ -847,7 +815,8 @@ async function pollCustomTaskResult(
     const taskPath = appendQuery(buildTaskPath(poll.path, taskId), poll.query)
     let taskPayload: unknown
     try {
-      const taskResponse = await fetch(buildApiUrl(profile.baseUrl, taskPath, proxyConfig, false), {
+      const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig, profile.provider, profile.baseUrl)
+      const taskResponse = await fetch(buildApiUrl(profile.baseUrl, taskPath, proxyConfig, useApiProxy), {
         method: poll.method ?? 'GET',
         headers: requestHeaders,
         cache: 'no-store',
@@ -871,12 +840,8 @@ async function pollCustomTaskResult(
       throw new Error(typeof message === 'string' && message.trim() ? message : '异步任务失败')
     }
     if (state === 'success') {
-      try {
-        return await extractCustomImages(taskPayload, poll.result, mime, signal)
-      } catch (err) {
-        if (!signal?.aborted && isRecoverablePollingError(err)) continue
-        throw err
-      }
+      // 提取图片失败属于不可恢复的错误（任务状态已经为成功，继续轮询状态无意义），应当直接抛出以便在 UI 上即时给出错误反馈，避免进入轮询重试死循环
+      return await extractCustomImages(taskPayload, poll.result, mime, profile, signal)
     }
   }
 }
@@ -892,8 +857,18 @@ export async function getCustomQueuedImageResult(
   return pollCustomTaskResult(profile, customProvider.poll, taskId, mime)
 }
 
-async function callCustomHttpImageApi(opts: CallApiOptions, profile: ApiProfile, customProvider: CustomProviderDefinition): Promise<CallApiResult> {
-  const { params, inputImageDataUrls } = opts
+async function callCustomHttpImageApiSingle(opts: CallApiOptions, profile: ApiProfile, customProvider: CustomProviderDefinition): Promise<CallApiResult> {
+  let activeOpts = opts
+  if (opts.maskDataUrl && opts.inputImageDataUrls.length > 0) {
+    const mergedDataUrl = await createMaskPreviewDataUrl(opts.inputImageDataUrls[0], opts.maskDataUrl)
+    activeOpts = {
+      ...opts,
+      inputImageDataUrls: [mergedDataUrl, ...opts.inputImageDataUrls.slice(1)],
+      maskDataUrl: undefined,
+    }
+  }
+
+  const { params, inputImageDataUrls } = activeOpts
   const isEdit = inputImageDataUrls.length > 0
   const mime = MIME_MAP[params.output_format] || 'image/png'
   const controller = new AbortController()
@@ -901,7 +876,7 @@ async function callCustomHttpImageApi(opts: CallApiOptions, profile: ApiProfile,
 
   try {
     const submitMapping = isEdit && customProvider.editSubmit ? customProvider.editSubmit : customProvider.submit
-    const submitPayload = await submitCustomRequest(submitMapping, opts, profile, controller)
+    const submitPayload = await submitCustomRequest(submitMapping, activeOpts, profile, controller)
     const taskIdValue = submitMapping.taskIdPath ? getByPath(submitPayload, submitMapping.taskIdPath) : undefined
     const taskId = typeof taskIdValue === 'string' ? taskIdValue.trim() : String(taskIdValue ?? '').trim()
     if (submitMapping.taskIdPath && !taskId) {
@@ -909,7 +884,7 @@ async function callCustomHttpImageApi(opts: CallApiOptions, profile: ApiProfile,
       ;(err as any).rawResponsePayload = JSON.stringify(submitPayload, null, 2)
       throw err
     }
-    if (!taskId) return extractCustomImages(submitPayload, submitMapping.result ?? {}, mime, controller.signal)
+    if (!taskId) return extractCustomImages(submitPayload, submitMapping.result ?? {}, mime, profile, controller.signal)
     if (!customProvider.poll) throw new Error('异步接口返回了 task_id，但服务商配置缺少 poll')
     opts.onCustomTaskEnqueued?.({ taskId })
     if (timeoutId) {
@@ -922,51 +897,19 @@ async function callCustomHttpImageApi(opts: CallApiOptions, profile: ApiProfile,
   }
 }
 
+export async function callCustomHttpImageApi(opts: CallApiOptions, profile: ApiProfile, customProvider: CustomProviderDefinition): Promise<CallApiResult> {
+  return callCustomHttpImageApiSingle(opts, profile, customProvider)
+}
+
 async function callResponsesImageApi(opts: CallApiOptions, profile: ApiProfile): Promise<CallApiResult> {
-  const n = opts.params.n > 0 ? opts.params.n : 1
-  if (n === 1) {
-    return callResponsesImageApiSingle(opts, profile)
-  }
-
-  const promises = Array.from({ length: n }).map((_, requestIndex) => callResponsesImageApiSingle({
-    ...opts,
-    onPartialImage: opts.onPartialImage
-      ? (partial) => opts.onPartialImage?.({ ...partial, requestIndex })
-      : undefined,
-  }, profile))
-  const results = await Promise.allSettled(promises)
-  
-  const successfulResults = results
-    .filter((r): r is PromiseFulfilledResult<CallApiResult> => r.status === 'fulfilled')
-    .map((r) => r.value)
-
-  if (successfulResults.length === 0) {
-    const firstError = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
-    if (firstError) throw firstError.reason
-    throw new Error('所有并发请求均失败')
-  }
-
-  const images = successfulResults.flatMap((r) => r.images)
-  const actualParamsList = successfulResults.flatMap((r) =>
-    r.actualParamsList?.length ? r.actualParamsList : r.images.map(() => r.actualParams),
-  )
-  const revisedPrompts = successfulResults.flatMap((r) =>
-    r.revisedPrompts?.length ? r.revisedPrompts : r.images.map(() => undefined),
-  )
-  const rawImageUrls = successfulResults.flatMap((r) => r.rawImageUrls ?? [])
-  const actualParams = mergeActualParams(
-    successfulResults[0]?.actualParams ?? {},
-    images.length === opts.params.n ? { n: opts.params.n } : { n: images.length },
-  )
-
-  return { images, actualParams, actualParamsList, revisedPrompts, ...(rawImageUrls.length ? { rawImageUrls } : {}) }
+  return callResponsesImageApiSingle(opts, profile)
 }
 
 async function callResponsesImageApiSingle(opts: CallApiOptions, profile: ApiProfile): Promise<CallApiResult> {
   const { prompt, params, inputImageDataUrls } = opts
   const mime = MIME_MAP[params.output_format] || 'image/png'
   const proxyConfig = readClientDevProxyConfig()
-  const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig)
+  const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig, profile.provider, profile.baseUrl)
   const requestHeaders = createRequestHeaders(profile)
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), profile.timeout * 1000)
@@ -1026,4 +969,46 @@ async function callResponsesImageApiSingle(opts: CallApiOptions, profile: ApiPro
   } finally {
     clearTimeout(timeoutId)
   }
+}
+
+export async function uploadLocalImage(dataUrl: string, profile: ApiProfile): Promise<string> {
+  const blob = await dataUrlToBlob(dataUrl)
+  const formData = new FormData()
+  formData.append('file', blob, 'image.png')
+
+  const proxyConfig = readClientDevProxyConfig()
+  const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig, profile.provider, profile.baseUrl)
+
+  let uploadBaseUrl = 'https://api.apimart.ai/v1'
+  if (profile.baseUrl) {
+    try {
+      const urlObj = new URL(profile.baseUrl)
+      if (urlObj.pathname.includes('/v1')) {
+        const idx = urlObj.pathname.indexOf('/v1')
+        uploadBaseUrl = `${urlObj.origin}${urlObj.pathname.slice(0, idx + 3)}`
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const path = 'uploads/images'
+  const response = await fetch(buildApiUrl(uploadBaseUrl, path, proxyConfig, useApiProxy), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${profile.apiKey}`,
+    },
+    body: formData,
+  })
+
+  if (!response.ok) {
+    throw new Error(await getApiErrorMessage(response))
+  }
+
+  const json = await response.json()
+  const url = json.data?.url || json.url || (Array.isArray(json.data) ? json.data[0]?.url : null) || json.data?.[0]
+  if (!url) {
+    throw new Error('上传参考图片未返回有效 URL')
+  }
+  return url
 }

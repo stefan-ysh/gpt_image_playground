@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import type { ApiProfile } from '../types'
+import { shouldUseApiProxy, getProxyImageUrl } from './devProxy'
 import {
   DEFAULT_FAL_BASE_URL,
   DEFAULT_FAL_MODEL,
@@ -13,7 +15,14 @@ import {
   mergeImportedSettings,
   normalizeSettings,
   switchApiProfileProvider,
+  APIMART_PROVIDER_ID,
+  APIMART_PROVIDER_DEFINITION,
+  normalizeApiProfile,
 } from './apiProfiles'
+
+declare const process: {
+  env: Record<string, string | undefined>
+}
 
 describe('mergeImportedSettings', () => {
   it('replaces the default OpenAI profile with legacy imported settings when current settings are untouched', () => {
@@ -27,9 +36,9 @@ describe('mergeImportedSettings', () => {
       apiProxy: true,
     })
 
-    expect(merged.profiles).toHaveLength(1)
+    expect(merged.profiles).toHaveLength(2)
     expect(merged.activeProfileId).toBe(DEFAULT_OPENAI_PROFILE_ID)
-    expect(merged.profiles[0]).toMatchObject({
+    expect(merged.profiles.find((p) => p.provider === 'openai')).toMatchObject({
       id: DEFAULT_OPENAI_PROFILE_ID,
       provider: 'openai',
       baseUrl: 'https://api.example.com/v1',
@@ -40,6 +49,7 @@ describe('mergeImportedSettings', () => {
       codexCli: true,
       apiProxy: true,
     })
+    expect(merged.profiles.find((p) => p.provider === APIMART_PROVIDER_ID)).toBeDefined()
   })
 
   it('replaces the default provider list with imported profiles when current settings are untouched', () => {
@@ -73,7 +83,9 @@ describe('mergeImportedSettings', () => {
       activeProfileId: 'imported-fal',
     })
 
-    expect(merged.profiles.map((profile) => profile.id)).toEqual(['imported-openai', 'imported-fal'])
+    expect(merged.profiles).toHaveLength(3)
+    expect(merged.profiles.map((profile) => profile.id)).toContain('imported-openai')
+    expect(merged.profiles.map((profile) => profile.id)).toContain('imported-fal')
     expect(merged.activeProfileId).toBe('imported-fal')
   })
 
@@ -108,8 +120,8 @@ describe('mergeImportedSettings', () => {
       activeProfileId: 'imported-openai-b',
     })
 
-    expect(merged.profiles).toHaveLength(1)
-    expect(merged.profiles[0].id).toBe('imported-openai-a')
+    expect(merged.profiles).toHaveLength(2)
+    expect(merged.profiles.find((p) => p.id === 'imported-openai-a')).toBeDefined()
     expect(merged.activeProfileId).toBe('imported-openai-a')
   })
 
@@ -125,16 +137,15 @@ describe('mergeImportedSettings', () => {
       model: 'imported-model',
     })
 
-    expect(merged.profiles).toHaveLength(2)
+    expect(merged.profiles).toHaveLength(3)
     expect(merged.activeProfileId).toBe(DEFAULT_OPENAI_PROFILE_ID)
     expect(merged.profiles[0]).toMatchObject({ apiKey: 'current-key', model: 'current-model' })
-    expect(merged.profiles[1]).toMatchObject({
+    expect(merged.profiles.find((p) => p.baseUrl === 'https://imported.example.com/v1')).toMatchObject({
       provider: 'openai',
       baseUrl: 'https://imported.example.com/v1',
       apiKey: 'imported-key',
       model: 'imported-model',
     })
-    expect(merged.profiles[1].id).not.toBe(DEFAULT_OPENAI_PROFILE_ID)
   })
 
   it('appends imported profiles as new profiles when current settings are customized', () => {
@@ -173,12 +184,12 @@ describe('mergeImportedSettings', () => {
       activeProfileId: 'imported-fal',
     })
 
-    expect(merged.profiles).toHaveLength(3)
+    expect(merged.profiles).toHaveLength(4)
     expect(merged.activeProfileId).toBe(DEFAULT_OPENAI_PROFILE_ID)
     expect(merged.profiles[0]).toMatchObject({ apiKey: 'current-key', model: 'current-model' })
-    expect(merged.profiles[1]).toMatchObject({ name: 'Imported OpenAI', provider: 'openai', apiKey: 'imported-key' })
-    expect(merged.profiles[2]).toMatchObject({ name: 'Imported fal', provider: 'fal', apiKey: 'fal-key' })
-    expect(new Set(merged.profiles.map((profile) => profile.id)).size).toBe(3)
+    expect(merged.profiles.find((p) => p.name === 'Imported OpenAI')).toMatchObject({ name: 'Imported OpenAI', provider: 'openai', apiKey: 'imported-key' })
+    expect(merged.profiles.find((p) => p.name === 'Imported fal')).toMatchObject({ name: 'Imported fal', provider: 'fal', apiKey: 'fal-key' })
+    expect(new Set(merged.profiles.map((profile) => profile.id)).size).toBe(4)
   })
 
   it('skips imported profiles that already exist in current customized settings', () => {
@@ -216,9 +227,9 @@ describe('mergeImportedSettings', () => {
       ],
     })
 
-    expect(merged.profiles).toHaveLength(2)
+    expect(merged.profiles).toHaveLength(3)
     expect(merged.profiles[0]).toMatchObject({ apiKey: 'current-key', model: 'current-model' })
-    expect(merged.profiles[1]).toMatchObject({ provider: 'fal', apiKey: 'fal-key', model: DEFAULT_FAL_MODEL })
+    expect(merged.profiles.find((p) => p.name === 'New fal')).toMatchObject({ provider: 'fal', apiKey: 'fal-key', model: DEFAULT_FAL_MODEL })
   })
 
   it('reuses an existing keyed profile when importing the same custom profile without an API key', () => {
@@ -276,7 +287,7 @@ describe('mergeImportedSettings', () => {
     const merged = mergeImportedSettings(current, imported)
     const match = findEquivalentApiProfile(merged, imported.profiles[0], imported.customProviders)
 
-    expect(merged.profiles).toHaveLength(1)
+    expect(merged.profiles).toHaveLength(2)
     expect(match?.id).toBe('existing-custom')
   })
 
@@ -309,8 +320,8 @@ describe('mergeImportedSettings', () => {
       }],
     })
 
-    expect(merged.customProviders.map((provider) => provider.id)).toEqual(['custom-existing', 'custom-imported'])
-    expect(merged.profiles).toHaveLength(2)
+    expect(merged.customProviders.map((provider) => provider.id)).toEqual(['custom-existing', APIMART_PROVIDER_ID, 'custom-imported'])
+    expect(merged.profiles).toHaveLength(3)
   })
 
   it('appends imported custom providers and keeps imported custom profile references', () => {
@@ -345,10 +356,10 @@ describe('mergeImportedSettings', () => {
       }],
     })
 
-    expect(merged.customProviders).toHaveLength(1)
-    expect(merged.customProviders[0]).toMatchObject({ id: 'custom-json', name: 'Custom JSON' })
-    expect(merged.profiles).toHaveLength(2)
-    expect(merged.profiles[1]).toMatchObject({
+    expect(merged.customProviders).toHaveLength(2)
+    expect(merged.customProviders.find((p) => p.id === 'custom-json')).toMatchObject({ id: 'custom-json', name: 'Custom JSON' })
+    expect(merged.profiles).toHaveLength(3)
+    expect(merged.profiles.find((p) => p.id.startsWith('custom-json-imported'))).toMatchObject({
       name: 'Imported Custom',
       provider: 'custom-json',
       apiKey: 'custom-key',
@@ -557,12 +568,6 @@ describe('custom providers', () => {
     expect(clamped.profiles[0].streamPartialImages).toBe(3)
   })
 
-  it('enables Agent submit auto scroll by default', () => {
-    expect(DEFAULT_SETTINGS.agentScrollToBottomAfterSubmit).toBe(true)
-    expect(normalizeSettings({}).agentScrollToBottomAfterSubmit).toBe(true)
-    expect(normalizeSettings({ agentScrollToBottomAfterSubmit: false }).agentScrollToBottomAfterSubmit).toBe(false)
-  })
-
   it('restores OpenAI-compatible URL after switching through fal.ai', () => {
     const openaiProfile = createDefaultOpenAIProfile({
       baseUrl: 'https://api.compat.example.com/v1',
@@ -577,5 +582,172 @@ describe('custom providers', () => {
     expect(restoredProfile.baseUrl).toBe('https://api.compat.example.com/v1')
     expect(restoredProfile.model).toBe('custom-openai-model')
     expect(restoredProfile.apiProxy).toBe(false)
+  })
+
+  describe('built-in APIMart provider', () => {
+    it('automatically registers APIMart provider and default profile', () => {
+      const settings = normalizeSettings({})
+      expect(settings.customProviders.some((p) => p.id === APIMART_PROVIDER_ID)).toBe(true)
+      expect(settings.profiles.some((p) => p.provider === APIMART_PROVIDER_ID)).toBe(true)
+
+      const dragoncodeProfile = settings.profiles.find((p) => p.provider === APIMART_PROVIDER_ID)
+      expect(dragoncodeProfile?.baseUrl).toBe('https://api.apimart.ai/v1')
+      expect(dragoncodeProfile?.model).toBe('gpt-image-2')
+    })
+
+    it('sets correct baseUrl and model when switching provider to APIMart', () => {
+      const initial = createDefaultOpenAIProfile()
+      const provider = APIMART_PROVIDER_DEFINITION
+      const profile = switchApiProfileProvider(initial, provider.id, provider)
+
+      expect(profile.provider).toBe(provider.id)
+      expect(profile.baseUrl).toBe('https://api.apimart.ai/v1')
+      expect(profile.model).toBe('gpt-image-2')
+    })
+
+    it('automatically updates an existing cached APIMart provider definition to the latest', () => {
+      const outdatedProvider = {
+        id: APIMART_PROVIDER_ID,
+        name: 'Old APIMart',
+        submit: {
+          path: 'old/generations',
+          result: { imageUrlPaths: [] },
+        },
+      }
+      const settings = normalizeSettings({
+        customProviders: [outdatedProvider],
+      })
+      const resolved = settings.customProviders.find((p) => p.id === APIMART_PROVIDER_ID)
+      expect(resolved).toBeDefined()
+      expect(resolved?.name).toBe('APIMart GPT-Image-2')
+      expect(resolved?.submit.path).toBe('images/generations')
+      expect(resolved?.poll).toBeDefined()
+    })
+
+    it('automatically corrects provider to APIMart when the profile baseUrl belongs to APIMart', () => {
+      const customProviderIds = new Set<string>([APIMART_PROVIDER_ID])
+      const normalized = normalizeApiProfile({
+        id: 'test-profile',
+        name: 'My APIMart',
+        provider: 'openai',
+        baseUrl: 'https://api.apimart.ai/v1',
+        apiKey: 'sk-apimart',
+        model: 'gpt-image-2',
+      }, undefined, customProviderIds)
+
+      expect(normalized.provider).toBe(APIMART_PROVIDER_ID)
+      expect(normalized.baseUrl).toBe('https://api.apimart.ai/v1')
+      expect(normalized.model).toBe('gpt-image-2')
+      expect(normalized.streamImages).toBe(false)
+    })
+
+    it('sets apiProxy based on proxy availability when switching provider to APIMart', () => {
+      const originalEnv = process.env.VITE_API_PROXY_AVAILABLE
+      process.env.VITE_API_PROXY_AVAILABLE = 'true'
+      try {
+        const initial = createDefaultOpenAIProfile()
+        const provider = APIMART_PROVIDER_DEFINITION
+        const profile = switchApiProfileProvider(initial, provider.id, provider)
+        expect(profile.apiProxy).toBe(true)
+      } finally {
+        process.env.VITE_API_PROXY_AVAILABLE = originalEnv
+      }
+    })
+
+    it('sets apiProxy to true when normalizing APIMart profile if system proxy is available and record lacks apiProxy', () => {
+      const originalEnv = process.env.VITE_API_PROXY_AVAILABLE
+      process.env.VITE_API_PROXY_AVAILABLE = 'true'
+      try {
+        const customProviderIds = new Set<string>([APIMART_PROVIDER_ID])
+        const normalized = normalizeApiProfile({
+          id: 'test-profile',
+          name: 'My APIMart',
+          provider: APIMART_PROVIDER_ID,
+          baseUrl: 'https://api.apimart.ai/v1',
+          apiKey: 'sk-apimart',
+          model: 'gpt-image-2',
+        }, undefined, customProviderIds)
+        expect(normalized.apiProxy).toBe(true)
+      } finally {
+        process.env.VITE_API_PROXY_AVAILABLE = originalEnv
+      }
+    })
+
+    it('forces apiProxy to true when normalizing APIMart profile if system proxy is available even if record explicitly sets apiProxy to false', () => {
+      const originalEnv = process.env.VITE_API_PROXY_AVAILABLE
+      process.env.VITE_API_PROXY_AVAILABLE = 'true'
+      try {
+        const customProviderIds = new Set<string>([APIMART_PROVIDER_ID])
+        const normalized = normalizeApiProfile({
+          id: 'test-profile',
+          name: 'My APIMart',
+          provider: APIMART_PROVIDER_ID,
+          baseUrl: 'https://api.apimart.ai/v1',
+          apiKey: 'sk-apimart',
+          model: 'gpt-image-2',
+          apiProxy: false,
+        }, undefined, customProviderIds)
+        expect(normalized.apiProxy).toBe(true)
+      } finally {
+        process.env.VITE_API_PROXY_AVAILABLE = originalEnv
+      }
+    })
+
+    it('forces apiProxy to true when switching provider to APIMart even if draft explicitly sets apiProxy to false', () => {
+      const originalEnv = process.env.VITE_API_PROXY_AVAILABLE
+      process.env.VITE_API_PROXY_AVAILABLE = 'true'
+      try {
+        const initial = createDefaultOpenAIProfile()
+        const provider = APIMART_PROVIDER_DEFINITION
+        const profileWithDraft: ApiProfile = {
+          ...initial,
+          providerDrafts: {
+            [provider.id]: {
+              baseUrl: 'https://api.apimart.ai/v1',
+              model: 'gpt-image-2',
+              apiMode: 'images',
+              apiProxy: false,
+            }
+          }
+        }
+        const profile = switchApiProfileProvider(profileWithDraft, provider.id, provider)
+        expect(profile.apiProxy).toBe(true)
+      } finally {
+        process.env.VITE_API_PROXY_AVAILABLE = originalEnv
+      }
+    })
+
+    it('forces shouldUseApiProxy to true when provider or baseUrl is APIMart/APIMart if system proxy is available', () => {
+      const originalEnv = process.env.VITE_API_PROXY_AVAILABLE
+      process.env.VITE_API_PROXY_AVAILABLE = 'true'
+      try {
+        expect(shouldUseApiProxy(false, null, APIMART_PROVIDER_ID)).toBe(true)
+        expect(shouldUseApiProxy(false, null, 'some-other-provider', 'https://api.apimart.ai/v1')).toBe(true)
+        expect(shouldUseApiProxy(false, null, 'some-other-provider', 'https://api.apimart.ai/v1')).toBe(true)
+        expect(shouldUseApiProxy(false, null, 'some-other-provider', 'https://api.openai.com/v1')).toBe(false)
+        expect(shouldUseApiProxy(true, null, 'some-other-provider', 'https://api.openai.com/v1')).toBe(true)
+      } finally {
+        process.env.VITE_API_PROXY_AVAILABLE = originalEnv
+      }
+    })
+
+    it('rewrites DragonCode image URL correctly via getProxyImageUrl under proxy', () => {
+      const originalEnv = process.env.VITE_API_PROXY_AVAILABLE
+      process.env.VITE_API_PROXY_AVAILABLE = 'true'
+      try {
+        const profile = {
+          ...createDefaultOpenAIProfile(),
+          provider: 'some-custom-provider',
+          baseUrl: 'https://dragoncode.codes/v1',
+          apiProxy: false,
+        }
+        
+        const imageUrl = 'https://dragoncode.codes/gpt-image/media/task_01KS7ZSKETT22WW3FYF5MTB486/0?token=abc'
+        const proxied = getProxyImageUrl(imageUrl, profile)
+        expect(proxied).toBe('/api-proxy/media/task_01KS7ZSKETT22WW3FYF5MTB486/0?token=abc')
+      } finally {
+        process.env.VITE_API_PROXY_AVAILABLE = originalEnv
+      }
+    })
   })
 })

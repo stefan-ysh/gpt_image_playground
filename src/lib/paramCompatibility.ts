@@ -1,14 +1,10 @@
 import { DEFAULT_PARAMS, type AppSettings, type TaskParams } from '../types'
-import { getActiveApiProfile } from './apiProfiles'
-import { normalizeImageSize } from './size'
+import { getActiveApiProfile, APIMART_PROVIDER_ID } from './apiProfiles'
+import { normalizeImageSize, isSupported4KRatio } from './size'
 
 export const DEFAULT_FAL_IMAGE_SIZE = '1360x1024'
 export const MAX_FAL_OUTPUT_IMAGES = 4
 export const MAX_OPENAI_OUTPUT_IMAGES = 10
-
-export function getOutputImageLimitForSettings(settings: AppSettings) {
-  return getActiveApiProfile(settings).provider === 'fal' ? MAX_FAL_OUTPUT_IMAGES : MAX_OPENAI_OUTPUT_IMAGES
-}
 
 export function normalizeParamsForSettings(
   params: TaskParams,
@@ -16,11 +12,16 @@ export function normalizeParamsForSettings(
   options: { hasInputImages?: boolean } = {},
 ): TaskParams {
   const activeProfile = getActiveApiProfile(settings)
-  const outputImageLimit = getOutputImageLimitForSettings(settings)
   const nextParams: TaskParams = {
     ...params,
     size: normalizeImageSize(params.size) || DEFAULT_PARAMS.size,
-    n: Math.min(outputImageLimit, Math.max(1, params.n || DEFAULT_PARAMS.n)),
+    n: 1,
+  }
+
+  if (activeProfile.provider === APIMART_PROVIDER_ID) {
+    if (nextParams.quality === 'high' && !isSupported4KRatio(nextParams.size)) {
+      nextParams.quality = 'medium'
+    }
   }
 
   if (activeProfile.provider === 'openai' && activeProfile.codexCli) {

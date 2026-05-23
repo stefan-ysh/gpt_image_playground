@@ -145,7 +145,7 @@ export async function fetchImageUrlAsDataUrl(url: string, fallbackMime: string, 
 }
 
 export async function getApiErrorMessage(response: Response): Promise<string> {
-  let errorMsg = `HTTP ${response.status}`
+  let errorMsg = ''
   try {
     const errJson = await response.json()
     if (errJson.error?.message) errorMsg = errJson.error.message
@@ -160,7 +160,21 @@ export async function getApiErrorMessage(response: Response): Promise<string> {
       /* ignore */
     }
   }
-  return errorMsg
+
+  const statusMap: Record<number, string> = {
+    400: '参数错误：size 不合法 / resolution 不支持 / 像素违规等',
+    401: '身份验证失败，请检查您的API密钥',
+    402: '账户余额不足，请充值后再试',
+    429: '请求过于频繁，请稍后再试',
+    500: '服务器错误',
+    503: '上游暂时不可用，请稍后再试',
+  }
+
+  if (statusMap[response.status]) {
+    return errorMsg ? `${statusMap[response.status]}（${errorMsg}）` : statusMap[response.status]
+  }
+
+  return errorMsg || `HTTP ${response.status}`
 }
 
 export function pickActualParams(source: unknown): Partial<TaskParams> {

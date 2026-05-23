@@ -16,7 +16,7 @@ describe('URL settings params', () => {
       ...buildSettingsFromUrlParams(current, new URLSearchParams('apiUrl=https://api.example.com/v1&apiKey=test-key')),
     })
 
-    expect(next.profiles).toHaveLength(2)
+    expect(next.profiles).toHaveLength(3)
     expect(next.activeProfileId).not.toBe(current.activeProfileId)
     expect(next.profiles.find((profile) => profile.id === next.activeProfileId)).toMatchObject({
       name: 'URL 参数配置',
@@ -60,7 +60,7 @@ describe('URL settings params', () => {
       ...buildSettingsFromUrlParams(current, new URLSearchParams('apiUrl=https://api.example.com/v1/&apiKey=test-key')),
     })
 
-    expect(next.profiles).toHaveLength(2)
+    expect(next.profiles).toHaveLength(3)
     expect(next.activeProfileId).toBe(existingProfile.id)
   })
 
@@ -84,7 +84,7 @@ describe('URL settings params', () => {
     })
     const activeProfile = next.profiles.find((profile) => profile.id === next.activeProfileId)
 
-    expect(next.profiles).toHaveLength(3)
+    expect(next.profiles).toHaveLength(4)
     expect(next.activeProfileId).not.toBe(existingProfile.id)
     expect(activeProfile).toMatchObject({
       provider: 'openai',
@@ -107,7 +107,7 @@ describe('URL settings params', () => {
       ...buildSettingsFromUrlParams(current, new URLSearchParams('apiUrl=https://api.example.com/v1&apiKey=openai-key')),
     })
 
-    expect(next.profiles).toHaveLength(2)
+    expect(next.profiles).toHaveLength(3)
     expect(next.profiles.find((profile) => profile.id === next.activeProfileId)).toMatchObject({
       provider: 'openai',
       baseUrl: 'https://api.example.com/v1',
@@ -158,8 +158,8 @@ describe('URL settings params', () => {
       ...buildSettingsFromUrlParams(DEFAULT_SETTINGS, params),
     })
 
-    expect(next.customProviders).toHaveLength(1)
-    expect(next.customProviders[0]).toMatchObject({ id: 'custom-json', name: 'Custom JSON' })
+    expect(next.customProviders).toHaveLength(2)
+    expect(next.customProviders.find((p) => p.id === 'custom-json')).toMatchObject({ id: 'custom-json', name: 'Custom JSON' })
     expect(next.activeProfileId).toBe('custom-profile')
     expect(next.profiles[0]).toMatchObject({
       id: 'custom-profile',
@@ -260,9 +260,9 @@ describe('URL settings params', () => {
       ...buildSettingsFromUrlParams(DEFAULT_SETTINGS, params),
     })
 
-    expect(next.customProviders).toHaveLength(1)
-    expect(next.customProviders[0]).toMatchObject({ id: 'wrapped-custom', name: 'Wrapped Custom' })
-    expect(next.profiles).toHaveLength(1)
+    expect(next.customProviders).toHaveLength(2)
+    expect(next.customProviders.find((p) => p.id === 'wrapped-custom')).toMatchObject({ id: 'wrapped-custom', name: 'Wrapped Custom' })
+    expect(next.profiles).toHaveLength(2)
     expect(next.profiles[0]).toMatchObject({
       id: 'wrapped-profile',
       provider: 'wrapped-custom',

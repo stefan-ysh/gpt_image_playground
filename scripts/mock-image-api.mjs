@@ -242,8 +242,9 @@ async function handleApi(req, res, url) {
     return
   }
 
-  const wantsStream = (body.json && typeof body.json === 'object' && body.json.stream === true) ||
-    /name="stream"[\s\S]*?\r?\n\r?\ntrue/.test(body.text)
+  const wantsStream = (body.json && typeof body.json === 'object' && (body.json.stream === true || body.json.partial_images !== undefined)) ||
+    /name="stream"[\s\S]*?\r?\n\r?\ntrue/.test(body.text) ||
+    /name="partial_images"/.test(body.text)
   if (wantsStream) {
     await sendSse(res, createImagesStreamEvents(req, mode, n, url.pathname.endsWith('/v1/images/edits')))
     return

@@ -1,10 +1,11 @@
 import type { TaskRecord, StoredImage, StoredImageThumbnail } from '../types'
 
 const DB_NAME = 'gpt-image-playground'
-const DB_VERSION = 2
+const DB_VERSION = 3
 const STORE_TASKS = 'tasks'
 const STORE_IMAGES = 'images'
 const STORE_THUMBNAILS = 'thumbnails'
+const STORE_APP_STATE = 'app_state'
 const THUMBNAIL_MAX_SIZE = 720
 const THUMBNAIL_QUALITY = 0.9
 const THUMBNAIL_VERSION = 2
@@ -24,6 +25,9 @@ function openDB(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(STORE_THUMBNAILS)) {
         db.createObjectStore(STORE_THUMBNAILS, { keyPath: 'id' })
+      }
+      if (!db.objectStoreNames.contains(STORE_APP_STATE)) {
+        db.createObjectStore(STORE_APP_STATE, { keyPath: 'id' })
       }
     }
     req.onsuccess = () => resolve(req.result)
@@ -48,6 +52,20 @@ function dbTransaction<T>(
   )
 }
 
+// ===== App State (Zustand Async IndexedDB storage) =====
+
+export function getAppState(key: string): Promise<{ id: string; value: unknown } | undefined> {
+  return dbTransaction(STORE_APP_STATE, 'readonly', (s) => s.get(key))
+}
+
+export function putAppState(key: string, value: unknown): Promise<IDBValidKey> {
+  return dbTransaction(STORE_APP_STATE, 'readwrite', (s) => s.put({ id: key, value }))
+}
+
+export function deleteAppState(key: string): Promise<undefined> {
+  return dbTransaction(STORE_APP_STATE, 'readwrite', (s) => s.delete(key))
+}
+
 // ===== Tasks =====
 
 export function getAllTasks(): Promise<TaskRecord[]> {
@@ -69,10 +87,16 @@ export function clearTasks(): Promise<undefined> {
 // ===== Images =====
 
 export function getImage(id: string): Promise<StoredImage | undefined> {
+  if (typeof id === 'string' && /^https?:\/\//i.test(id)) {
+    return Promise.resolve({ id, dataUrl: id, source: 'generated' })
+  }
   return dbTransaction(STORE_IMAGES, 'readonly', (s) => s.get(id))
 }
 
 export function getStoredImageThumbnail(id: string): Promise<StoredImageThumbnail | undefined> {
+  if (typeof id === 'string' && /^https?:\/\//i.test(id)) {
+    return Promise.resolve({ id, thumbnailDataUrl: id, thumbnailVersion: THUMBNAIL_VERSION })
+  }
   return dbTransaction(STORE_THUMBNAILS, 'readonly', (s) => s.get(id))
 }
 
@@ -86,6 +110,9 @@ export function putImageThumbnail(thumbnail: StoredImageThumbnail): Promise<IDBV
 }
 
 export async function getImageThumbnail(id: string): Promise<StoredImageThumbnail | undefined> {
+  if (typeof id === 'string' && /^https?:\/\//i.test(id)) {
+    return { id, thumbnailDataUrl: id, thumbnailVersion: THUMBNAIL_VERSION }
+  }
   const existingThumbnail = await getStoredImageThumbnail(id)
   if (existingThumbnail?.thumbnailVersion === THUMBNAIL_VERSION) {
     const image = await getImage(id)
@@ -203,6 +230,9 @@ function hashDataUrlFallback(dataUrl: string): string {
  * 返回 image id。
  */
 export async function storeImage(dataUrl: string, source: NonNullable<StoredImage['source']> = 'upload'): Promise<string> {
+  if (typeof dataUrl === 'string' && /^https?:\/\//i.test(dataUrl)) {
+    return dataUrl
+  }
   const id = await hashDataUrl(dataUrl)
   const existing = await getImage(id)
   if (!existing) {
