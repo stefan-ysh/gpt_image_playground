@@ -1,13 +1,11 @@
 // ===== 设置 =====
 
 export type ApiMode = 'images' | 'responses'
-export type AppMode = 'gallery' | 'agent'
 export type ReferenceImageEditAction = 'ask' | 'replace-reference' | 'add-mask'
 export type BuiltInApiProvider = 'openai' | 'fal'
 export type ApiProvider = BuiltInApiProvider | string
 export type CustomProviderTemplate = 'http-image'
 export const DEFAULT_STREAM_PARTIAL_IMAGES = 1
-export const DEFAULT_AGENT_MAX_TOOL_ROUNDS = 15
 
 export type CustomProviderRequestMethod = 'GET' | 'POST'
 export type CustomProviderContentType = 'json' | 'multipart'
@@ -73,6 +71,12 @@ export interface ApiProfile {
   providerDrafts?: Partial<Record<ApiProvider, Partial<Pick<ApiProfile, 'baseUrl' | 'model' | 'apiMode' | 'codexCli' | 'apiProxy' | 'responseFormatB64Json' | 'streamImages' | 'streamPartialImages'>>>>
 }
 
+export interface TaskGroup {
+  id: string
+  name: string
+  createdAt: number
+}
+
 export interface AppSettings {
   /** 旧版单配置字段：保留用于导入/查询参数兼容，实际请求以 active profile 为准 */
   baseUrl: string
@@ -92,11 +96,15 @@ export interface AppSettings {
   alwaysShowRetryButton: boolean
   enterSubmit: boolean
   referenceImageEditAction: ReferenceImageEditAction
-  agentScrollToBottomAfterSubmit: boolean
-  agentMaxToolRounds: number
-  agentWebSearch: boolean
   profiles: ApiProfile[]
   activeProfileId: string
+  groups?: TaskGroup[]
+  theme: 'light' | 'dark' | 'system'
+  webdavEnabled: boolean
+  webdavUrl: string
+  webdavUsername: string
+  webdavPassword: string
+  webdavLastSyncTime?: number
 }
 
 // ===== 任务参数 =====
@@ -188,66 +196,10 @@ export interface TaskRecord {
   elapsed: number | null
   /** 是否收藏 */
   isFavorite?: boolean
-  /** 来源模式：画廊 / Agent */
-  sourceMode?: AppMode
-  /** Agent 对话 ID */
-  agentConversationId?: string
-  /** Agent 轮次 ID */
-  agentRoundId?: string
-  /** Agent 消息 ID */
-  agentMessageId?: string
-  /** Agent 图像工具调用 ID */
-  agentToolCallId?: string
-  /** Agent 批量图像工具调用 ID */
-  agentBatchCallId?: string
-  /** Agent 图像工具实际动作 */
-  agentToolAction?: 'generate' | 'edit' | 'auto' | string
-}
-
-// ===== Agent 模式 =====
-
-export type AgentMessageRole = 'user' | 'assistant'
-export type AgentRoundStatus = 'running' | 'done' | 'error'
-
-export interface AgentMessage {
-  id: string
-  role: AgentMessageRole
-  content: string
-  roundId: string
-  inputImageIds?: string[]
-  maskTargetImageId?: string | null
-  maskImageId?: string | null
-  outputTaskIds?: string[]
-  createdAt: number
-}
-
-export interface AgentRound {
-  id: string
-  index: number
-  parentRoundId?: string | null
-  userMessageId: string
-  assistantMessageId?: string
-  prompt: string
-  inputImageIds: string[]
-  maskTargetImageId?: string | null
-  maskImageId?: string | null
-  outputTaskIds: string[]
-  responseId?: string
-  responseOutput?: ResponsesOutputItem[]
-  status: AgentRoundStatus
-  error: string | null
-  createdAt: number
-  finishedAt: number | null
-}
-
-export interface AgentConversation {
-  id: string
-  title: string
-  activeRoundId?: string | null
-  createdAt: number
-  updatedAt: number
-  rounds: AgentRound[]
-  messages: AgentMessage[]
+  /** 所属分组 ID */
+  groupId?: string
+  /** 多用户隔离指纹（API Key 的哈希） */
+  ownerFingerprint?: string
 }
 
 // ===== IndexedDB 存储的图片 =====
@@ -397,7 +349,6 @@ export interface ExportData {
   exportedAt: string
   settings?: AppSettings
   tasks?: TaskRecord[]
-  agentConversations?: AgentConversation[]
   /** imageId → 图片信息 */
   imageFiles?: Record<string, {
     path: string
@@ -414,3 +365,11 @@ export interface ExportData {
     thumbnailVersion?: number
   }>
 }
+
+export interface UserInfo {
+  id: string
+  email: string
+  displayName: string | null
+  role: string
+}
+

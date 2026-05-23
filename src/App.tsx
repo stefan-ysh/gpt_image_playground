@@ -6,7 +6,6 @@ import { useDockerApiUrlMigrationNotice } from './hooks/useDockerApiUrlMigration
 import Header from './components/Header'
 import SearchBar from './components/SearchBar'
 import TaskGrid from './components/TaskGrid'
-import AgentWorkspace from './components/AgentWorkspace'
 import InputBar from './components/InputBar'
 import DetailModal from './components/DetailModal'
 import Lightbox from './components/Lightbox'
@@ -17,10 +16,11 @@ import MaskEditorModal from './components/MaskEditorModal'
 import ImageContextMenu from './components/ImageContextMenu'
 import SupportPromptModal from './components/SupportPromptModal'
 import { useGlobalClickSuppression } from './lib/clickSuppression'
+import AuthGuard from './components/auth/AuthGuard'
+import Sidebar from './components/Sidebar'
 
 export default function App() {
   const setSettings = useStore((s) => s.setSettings)
-  const appMode = useStore((s) => s.appMode)
   useDockerApiUrlMigrationNotice()
   useGlobalClickSuppression()
 
@@ -53,18 +53,24 @@ export default function App() {
   }, [])
 
   return (
-    <>
-      <Header />
-      {appMode === 'agent' ? (
-        <AgentWorkspace />
-      ) : (
-        <main data-home-main data-drag-select-surface className="pb-48">
-          <div className="safe-area-x max-w-7xl mx-auto">
-            <SearchBar />
-            <TaskGrid />
-          </div>
-        </main>
-      )}
+    <AuthGuard>
+      <div className="flex h-screen w-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
+        <Sidebar />
+        
+        <div 
+          className="flex-1 flex flex-col min-w-0 h-full relative overflow-y-auto" 
+          data-home-main 
+          data-drag-select-surface
+        >
+          <Header />
+          <main className="flex-1 pb-48 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-7xl mx-auto space-y-4 pt-4">
+              <SearchBar />
+              <TaskGrid />
+            </div>
+          </main>
+        </div>
+      </div>
       <InputBar />
       <DetailModal />
       <Lightbox />
@@ -74,6 +80,6 @@ export default function App() {
       <Toast />
       <MaskEditorModal />
       <ImageContextMenu />
-    </>
+    </AuthGuard>
   )
 }

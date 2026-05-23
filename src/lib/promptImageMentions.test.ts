@@ -38,7 +38,7 @@ describe('prompt image mentions', () => {
     })
   })
 
-  it('inserts selected agent round image mentions', () => {
+  it('inserts selected image mentions', () => {
     expect(insertTextMentionAtVisibleRange('参考@生成', 2, 3, '@第1轮图2')).toEqual({
       prompt: `参考${getSelectedTextMentionLabel('@第1轮图2')}生成`,
       cursor: 8,
@@ -61,7 +61,7 @@ describe('prompt image mentions', () => {
     ])
   })
 
-  it('splits selected agent round image mentions for tag rendering', () => {
+  it('splits selected image mentions for tag rendering', () => {
     expect(getPromptMentionParts(`用${getSelectedTextMentionLabel('@第2轮图4')}生成`, images)).toEqual([
       { type: 'text', text: '用' },
       { type: 'mention', text: '@第2轮图4', mentionText: getSelectedTextMentionLabel('@第2轮图4') },
@@ -78,7 +78,7 @@ describe('prompt image mentions', () => {
     expect(isCursorInSelectedImageMention('参考 @图2 生成', 6)).toBe(false)
   })
 
-  it('detects cursor inside selected agent round image mentions', () => {
+  it('detects cursor inside selected image mentions', () => {
     const prompt = `参考 ${getSelectedTextMentionLabel('@第1轮图2')} 生成`
 
     expect(isCursorInSelectedImageMention(prompt, 9)).toBe(true)

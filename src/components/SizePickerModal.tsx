@@ -1,19 +1,33 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { calculateImageSize, normalizeImageSize, parseRatio, type SizeTier } from '../lib/size'
+import { calculateImageSize, normalizeImageSize, parseRatio, isSupported4KRatio, type SizeTier } from '../lib/size'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
+import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 import ViewportTooltip from './ViewportTooltip'
 
-const TIERS: SizeTier[] = ['1K', '2K', '4K']
+/** 分辨率档位配置，包含显示标签和说明 */
+const TIER_CONFIG: { value: SizeTier; label: string; desc: string }[] = [
+  { value: '1K', label: '1k', desc: '1K 分辨率' },
+  { value: '2K', label: '2k', desc: '2K 分辨率（推荐）' },
+  { value: '4K', label: '4k', desc: '4K 分辨率（支持 15 种比例）' },
+]
+const TIERS: SizeTier[] = TIER_CONFIG.map((t) => t.value)
 const SIZE_LIMIT_TEXT = '由于模型限制，最终输出会自动规整到合法尺寸：\n宽高均为 16 的倍数，最大边长 3840px，宽高比不超过 3:1，总像素限制为 655360-8294400。'
 const RATIOS = [
   { label: '1:1', value: '1:1' },
   { label: '3:2', value: '3:2' },
   { label: '2:3', value: '2:3' },
-  { label: '16:9', value: '16:9' },
-  { label: '9:16', value: '9:16' },
   { label: '4:3', value: '4:3' },
   { label: '3:4', value: '3:4' },
+  { label: '5:4', value: '5:4' },
+  { label: '4:5', value: '4:5' },
+  { label: '16:9', value: '16:9' },
+  { label: '9:16', value: '9:16' },
+  { label: '2:1', value: '2:1' },
+  { label: '1:2', value: '1:2' },
+  { label: '3:1', value: '3:1' },
+  { label: '1:3', value: '1:3' },
   { label: '21:9', value: '21:9' },
+  { label: '9:21', value: '9:21' },
 ]
 
 interface Props {
@@ -45,6 +59,7 @@ function findPresetForSize(size: string) {
 
 export default function SizePickerModal({ currentSize, onSelect, onClose, allowAuto = true }: Props) {
   usePreventBackgroundScroll(true)
+  useCloseOnEscape(true, onClose)
 
   const currentPreset = findPresetForSize(currentSize)
   const currentParsedSize = parseSize(currentSize)
@@ -78,6 +93,26 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
     parsedCustomRatio &&
     Math.max(parsedCustomRatio.width, parsedCustomRatio.height) / Math.min(parsedCustomRatio.width, parsedCustomRatio.height) > 3,
   )
+
+  // 计算当前选中比例对应的预览尺寸，用于判断是否支持4K
+  const previewSizeFor4KCheck = useMemo(() => {
+    if (mode !== 'ratio' || ratio === 'custom') return ''
+    return calculateImageSize('2K', ratio) ?? ''
+  }, [mode, ratio])
+  const currentRatioSupports4K = mode === 'ratio' && ratio !== 'custom'
+    ? isSupported4KRatio(previewSizeFor4KCheck)
+    : false
+
+  // 切换比例时，若新比例不支持4K且当前档位是4K，自动降级脲2K
+  const handleRatioChange = (newRatio: string) => {
+    setRatio(newRatio)
+    if (newRatio !== 'custom') {
+      const sizeFor4K = calculateImageSize('2K', newRatio) ?? ''
+      if (!isSupported4KRatio(sizeFor4K) && tier === '4K') {
+        setTier('2K')
+      }
+    }
+  }
 
   const previewSize = useMemo(() => {
     if (mode === 'auto') return 'auto'
@@ -210,11 +245,25 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
                 <section>
                   <div className="mb-2 text-xs font-medium text-gray-400 dark:text-gray-500">基准分辨率</div>
                   <div className="grid grid-cols-3 gap-2">
-                    {TIERS.map((item) => (
-                      <button key={item} className={buttonClass(tier === item)} onClick={() => setTier(item)}>
-                        {item}
-                      </button>
-                    ))}
+                    {TIER_CONFIG.map((item) => {
+                      // 4K 档位当前比例不支持时禁用
+                      const disabled4K = item.value === '4K' && !currentRatioSupports4K
+                      return (
+                        <button
+                          key={item.value}
+                          title={disabled4K ? '当前比例不支持 4K 分辨率' : item.desc}
+                          disabled={disabled4K}
+                          className={`${buttonClass(tier === item.value)} ${
+                            disabled4K
+                              ? 'opacity-40 cursor-not-allowed !bg-transparent'
+                              : ''
+                          }`}
+                          onClick={() => !disabled4K && setTier(item.value)}
+                        >
+                          {item.label}
+                        </button>
+                      )
+                    })}
                   </div>
                 </section>
 
@@ -229,7 +278,7 @@ export default function SizePickerModal({ currentSize, onSelect, onClose, allowA
                         <button
                           key={item.value}
                           className={`${buttonClass(ratio === item.value)} flex flex-col items-center justify-center gap-1.5 !py-2.5`}
-                          onClick={() => setRatio(item.value)}
+                          onClick={() => handleRatioChange(item.value)}
                         >
                           <div className="flex h-5 w-5 items-center justify-center">
                             <div

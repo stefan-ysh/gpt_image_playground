@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, useEffect } from 'react'
-import { useStore, reuseConfig, editOutputs, removeTask } from '../store'
+import { useStore, reuseConfig, editOutputs, removeTask, getCurrentFingerprint } from '../store'
 import TaskCard from './TaskCard'
+import Dialog from './ui/Dialog'
 
 export default function TaskGrid() {
   const tasks = useStore((s) => s.tasks)
@@ -28,11 +29,36 @@ export default function TaskGrid() {
   const initialSelection = useRef<string[]>([])
   const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform)
 
+  // 分组管理
+  const selectedGroupId = useStore((s) => s.selectedGroupId)
+  const settings = useStore((s) => s.settings)
+  const groups = settings.groups ?? []
+
+  const currentGroupName = useMemo(() => {
+    if (selectedGroupId === 'all') return '全部'
+    if (selectedGroupId === 'uncategorized') return '未分类'
+    const found = groups.find((g) => g.id === selectedGroupId)
+    return found ? found.name : '未分类'
+  }, [selectedGroupId, groups])
+
+  const [assigningTask, setAssigningTask] = useState<typeof tasks[0] | null>(null)
+
   const filteredTasks = useMemo(() => {
+    const currentFingerprint = getCurrentFingerprint(settings)
     const sorted = [...tasks].sort((a, b) => b.createdAt - a.createdAt)
     const q = searchQuery.trim().toLowerCase()
     
     return sorted.filter((t) => {
+      // 隔离：只看当前 API Key 指纹匹配的任务
+      if (t.ownerFingerprint !== currentFingerprint) return false
+
+      // 分组过滤
+      if (selectedGroupId === 'uncategorized') {
+        if (t.groupId) return false
+      } else if (selectedGroupId !== 'all') {
+        if (t.groupId !== selectedGroupId) return false
+      }
+
       if (filterFavorite && !t.isFavorite) return false
       const matchStatus = filterStatus === 'all' || t.status === filterStatus
       if (!matchStatus) return false
@@ -42,7 +68,7 @@ export default function TaskGrid() {
       const paramStr = JSON.stringify(t.params).toLowerCase()
       return prompt.includes(q) || paramStr.includes(q)
     })
-  }, [tasks, searchQuery, filterStatus, filterFavorite])
+  }, [tasks, searchQuery, filterStatus, filterFavorite, settings, selectedGroupId])
 
   const handleDelete = (task: typeof tasks[0]) => {
     setConfirmDialog({
@@ -52,10 +78,15 @@ export default function TaskGrid() {
     })
   }
 
-  const getPagePoint = (clientX: number, clientY: number) => ({
-    pageX: clientX + window.scrollX,
-    pageY: clientY + window.scrollY,
-  })
+  const getPagePoint = (clientX: number, clientY: number) => {
+    const scrollContainer = rootRef.current?.closest('[data-drag-select-surface]')
+    const scrollX = scrollContainer?.scrollLeft ?? 0
+    const scrollY = scrollContainer?.scrollTop ?? 0
+    return {
+      pageX: clientX + scrollX,
+      pageY: clientY + scrollY,
+    }
+  }
 
   const beginSelection = (target: HTMLElement, clientX: number, clientY: number, isCtrl: boolean) => {
     const point = getPagePoint(clientX, clientY)
@@ -87,6 +118,10 @@ export default function TaskGrid() {
     const minY = Math.min(start.pageY, pageY)
     const maxY = Math.max(start.pageY, pageY)
 
+    const scrollContainer = rootRef.current?.closest('[data-drag-select-surface]')
+    const scrollX = scrollContainer?.scrollLeft ?? 0
+    const scrollY = scrollContainer?.scrollTop ?? 0
+
     const cards = gridRef.current.querySelectorAll('.task-card-wrapper')
     const newSelected = new Set(initialSelection.current)
     const initialSelected = new Set(initialSelection.current)
@@ -96,10 +131,10 @@ export default function TaskGrid() {
       const taskId = card.getAttribute('data-task-id')
       if (!taskId) return
 
-      const cardLeft = rect.left + window.scrollX
-      const cardRight = rect.right + window.scrollX
-      const cardTop = rect.top + window.scrollY
-      const cardBottom = rect.bottom + window.scrollY
+      const cardLeft = rect.left + scrollX
+      const cardRight = rect.right + scrollX
+      const cardTop = rect.top + scrollY
+      const cardBottom = rect.bottom + scrollY
 
       const isIntersecting =
         minX < cardRight && maxX > cardLeft && minY < cardBottom && maxY > cardTop
@@ -132,7 +167,10 @@ export default function TaskGrid() {
       stopDragScroll()
       dragScrollDirectionRef.current = direction
       dragScrollIntervalRef.current = window.setInterval(() => {
-        window.scrollBy({ top: direction * 15, behavior: 'instant' })
+        const scrollContainer = rootRef.current?.closest('[data-drag-select-surface]')
+        if (scrollContainer) {
+          scrollContainer.scrollBy({ top: direction * 15, behavior: 'instant' })
+        }
       }, 16)
     }
 
@@ -253,76 +291,126 @@ export default function TaskGrid() {
     }
   }, [clearSelection, isMac])
 
-  if (!filteredTasks.length) {
-    return (
-      <div className="text-center py-20 text-gray-400 dark:text-gray-500">
-        {searchQuery || filterFavorite ? (
-          <p className="text-sm">没有找到匹配的记录</p>
-        ) : (
-          <>
-            <svg
-              className="w-16 h-16 mx-auto mb-4 text-gray-200 dark:text-gray-700"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1}
-                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-              />
-            </svg>
-            <p className="text-sm">输入提示词开始生成图片</p>
-          </>
-        )}
-      </div>
-    )
-  }
-
   return (
     <div 
       ref={rootRef}
       data-task-grid-root
       className="relative min-h-[50vh]"
     >
-      <div ref={gridRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-10">
-        {filteredTasks.map((task) => (
-          <div key={task.id} className="task-card-wrapper" data-task-id={task.id}>
-            <TaskCard
-              task={task}
-              onClick={(e) => {
-                if (Date.now() < suppressClickUntil.current) {
-                  e.preventDefault()
-                  return
-                }
-                suppressClickUntil.current = 0
-                const isCtrl = isMac ? e.metaKey : e.ctrlKey
-                if (isCtrl) {
-                  useStore.getState().toggleTaskSelection(task.id)
-                  return
-                }
-
-                setDetailTaskId(task.id)
-              }}
-              onReuse={() => reuseConfig(task)}
-              onEditOutputs={() => editOutputs(task)}
-              onDelete={() => handleDelete(task)}
-              isSelected={selectedTaskIds.includes(task.id)}
-            />
-          </div>
-        ))}
+      {/* 分组名称面包屑/指示标题 */}
+      <div className="mb-6 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 font-medium select-none" data-no-drag-select>
+        <span>画廊分类</span>
+        <span>/</span>
+        <span className="text-gray-900 dark:text-gray-100 font-semibold">{currentGroupName}</span>
       </div>
-      {selectionBox && (
-        <div
-          className="fixed bg-blue-500/20 border border-blue-500/50 pointer-events-none z-[30]"
-          style={{
-            left: Math.min(selectionBox.startPageX, selectionBox.currentPageX) - window.scrollX,
-            top: Math.min(selectionBox.startPageY, selectionBox.currentPageY) - window.scrollY,
-            width: Math.abs(selectionBox.currentPageX - selectionBox.startPageX),
-            height: Math.abs(selectionBox.currentPageY - selectionBox.startPageY),
-          }}
-        />
+
+      {!filteredTasks.length ? (
+        <div className="text-center py-20 text-gray-400 dark:text-gray-500">
+          {searchQuery || filterFavorite ? (
+            <p className="text-sm">没有找到匹配的记录</p>
+          ) : (
+            <>
+              <svg
+                className="w-16 h-16 mx-auto mb-4 text-gray-200 dark:text-gray-700"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1}
+                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                />
+              </svg>
+              <p className="text-sm">该分组目前没有图片，输入提示词开始生成</p>
+            </>
+          )}
+        </div>
+      ) : (
+        <div ref={gridRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-10">
+          {filteredTasks.map((task) => (
+            <div key={task.id} className="task-card-wrapper" data-task-id={task.id}>
+              <TaskCard
+                task={task}
+                onClick={(e) => {
+                  if (Date.now() < suppressClickUntil.current) {
+                    e.preventDefault()
+                    return
+                  }
+                  suppressClickUntil.current = 0
+                  const isCtrl = isMac ? e.metaKey : e.ctrlKey
+                  if (isCtrl) {
+                    useStore.getState().toggleTaskSelection(task.id)
+                    return
+                  }
+
+                  setDetailTaskId(task.id)
+                }}
+                onReuse={() => reuseConfig(task)}
+                onEditOutputs={() => editOutputs(task)}
+                onDelete={() => handleDelete(task)}
+                onAssignGroup={() => setAssigningTask(task)}
+                isSelected={selectedTaskIds.includes(task.id)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+      {selectionBox && (() => {
+        const scrollContainer = rootRef.current?.closest('[data-drag-select-surface]')
+        const scrollX = scrollContainer?.scrollLeft ?? 0
+        const scrollY = scrollContainer?.scrollTop ?? 0
+        return (
+          <div
+            className="fixed bg-blue-500/20 border border-blue-500/50 pointer-events-none z-[30]"
+            style={{
+              left: Math.min(selectionBox.startPageX, selectionBox.currentPageX) - scrollX,
+              top: Math.min(selectionBox.startPageY, selectionBox.currentPageY) - scrollY,
+              width: Math.abs(selectionBox.currentPageX - selectionBox.startPageX),
+              height: Math.abs(selectionBox.currentPageY - selectionBox.startPageY),
+            }}
+          />
+        )
+      })()}
+
+      {assigningTask && (
+        <Dialog
+          isOpen={!!assigningTask}
+          onClose={() => setAssigningTask(null)}
+          title="归类图片分组"
+          description="请选择要将该图片归入以下哪个分组："
+        >
+          <div className="grid grid-cols-1 gap-2 pt-2">
+            <button
+              onClick={() => {
+                useStore.getState().assignTaskToGroup(assigningTask.id, null)
+                setAssigningTask(null)
+              }}
+              className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 dark:border-white/[0.08] hover:bg-gray-100 dark:hover:bg-white/[0.04] transition-all text-sm font-semibold flex items-center justify-between text-gray-700 dark:text-gray-300"
+            >
+              <span className="flex items-center gap-2">
+                <span>📂</span>
+                <span>未分类</span>
+              </span>
+            </button>
+            {groups.map((g) => (
+              <button
+                key={g.id}
+                onClick={() => {
+                  useStore.getState().assignTaskToGroup(assigningTask.id, g.id)
+                  setAssigningTask(null)
+                }}
+                className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 dark:border-white/[0.08] hover:bg-gray-100 dark:hover:bg-white/[0.04] transition-all text-sm font-semibold flex items-center justify-between text-gray-700 dark:text-gray-300"
+              >
+                <span className="flex items-center gap-2">
+                  <span>🏷️</span>
+                  <span>{g.name}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </Dialog>
       )}
     </div>
   )
