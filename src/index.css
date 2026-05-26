@@ -592,20 +592,56 @@ input[type="number"] {
 
 /* 3. 高级微光骨架屏（Shimmer） */
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
 }
 
 .shimmer-skeleton {
-  background: linear-gradient(90deg, #e4e4e7 25%, #f4f4f5 50%, #e4e4e7 75%) !important;
-  background-size: 200% 100% !important;
-  animation: shimmer 1.5s infinite linear !important;
+  overflow: hidden;
+  background-color: rgba(228, 228, 231, 0.75);
+  backdrop-filter: blur(2px);
+}
+
+.shimmer-skeleton:not(.absolute) {
+  position: relative;
+}
+
+.shimmer-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-120%);
+
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.15) 35%,
+    rgba(255, 255, 255, 0.55) 50%,
+    rgba(255, 255, 255, 0.15) 65%,
+    transparent 100%
+  );
+
+  animation: shimmer 1.4s infinite ease-in-out;
+  will-change: transform;
 }
 
 .dark .shimmer-skeleton {
-  background: linear-gradient(90deg, #18181b 25%, #27272a 50%, #18181b 75%) !important;
-  background-size: 200% 100% !important;
-  animation: shimmer 1.5s infinite linear !important;
+  background-color: rgba(24, 24, 27, 0.75);
+}
+
+.dark .shimmer-skeleton::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.04) 35%,
+    rgba(255, 255, 255, 0.12) 50%,
+    rgba(255, 255, 255, 0.04) 65%,
+    transparent 100%
+  );
 }
 
 /* 4. AI 粒子光晕背景与扫描线 */

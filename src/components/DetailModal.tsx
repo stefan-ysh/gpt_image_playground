@@ -10,7 +10,6 @@ import { formatImageRatio } from '../lib/size'
 import { dismissAllTooltips } from '../lib/tooltipDismiss'
 import { editOutputs, ensureImageCached, getCachedImage, removeTask, retryTask, retryTaskImageTransfers, reuseConfig, updateTaskInStore, useStore } from '../store'
 import { CloseIcon, CodeIcon, CopyIcon, DownloadIcon, EditIcon, LinkIcon, TrashIcon } from './icons'
-import SmoothImage from './ui/SmoothImage'
 import ViewportTooltip from './ViewportTooltip'
 
 export default function DetailModal() {
@@ -40,6 +39,8 @@ export default function DetailModal() {
   const mainImageRef = useRef<HTMLImageElement>(null)
   const rawUrlsModalRef = useRef<HTMLDivElement>(null)
   const rawResponseModalRef = useRef<HTMLDivElement>(null)
+  const [loadedReferenceImageIds, setLoadedReferenceImageIds] = useState<string[]>([])
+  const [failedReferenceImageIds, setFailedReferenceImageIds] = useState<string[]>([])
 
   const rawUrlsBackdropPointerDownRef = useRef(false)
   const rawResponseBackdropPointerDownRef = useRef(false)
@@ -133,6 +134,8 @@ export default function DetailModal() {
       if (initial[id]) continue
       ensureImageCached(id).then((url) => {
         if (!cancelled && url) setImageSrcs((prev) => ({ ...prev, [id]: url }))
+      }).catch(() => {
+        if (!cancelled) setFailedReferenceImageIds((prev) => prev.includes(id) ? prev : [...prev, id])
       })
     }
 
@@ -144,7 +147,19 @@ export default function DetailModal() {
   const currentOutputImageId = task?.outputImages?.[imageIndex] || ''
   const currentOutputPreviewSrc = currentOutputImageId ? outputPreviewSrcs[currentOutputImageId] || '' : ''
 
-  const allInputImageIds = task?.inputImageIds ?? []
+  const allInputImageIds = useMemo(() => task?.inputImageIds ?? [], [task?.inputImageIds])
+
+  useEffect(() => {
+    const validIds = new Set(allInputImageIds)
+    setLoadedReferenceImageIds((prev) => {
+      const next = prev.filter((id) => validIds.has(id))
+      return next.length === prev.length ? prev : next
+    })
+    setFailedReferenceImageIds((prev) => {
+      const next = prev.filter((id) => validIds.has(id))
+      return next.length === prev.length ? prev : next
+    })
+  }, [allInputImageIds])
 
   useEffect(() => {
     setMainImageLoaded(false)
@@ -384,6 +399,16 @@ export default function DetailModal() {
   const handleRetry = () => {
     retryTask(task)
     setDetailTaskId(null)
+  }
+
+  const handleReferenceImageLoad = (imgId: string) => {
+    setLoadedReferenceImageIds((prev) => prev.includes(imgId) ? prev : [...prev, imgId])
+    setFailedReferenceImageIds((prev) => prev.includes(imgId) ? prev.filter((id) => id !== imgId) : prev)
+  }
+
+  const handleReferenceImageError = (imgId: string) => {
+    setFailedReferenceImageIds((prev) => prev.includes(imgId) ? prev : [...prev, imgId])
+    setLoadedReferenceImageIds((prev) => prev.includes(imgId) ? prev.filter((id) => id !== imgId) : prev)
   }
 
   return (
@@ -828,19 +853,32 @@ export default function DetailModal() {
                     <div className="flex gap-2 flex-wrap">
                       {allInputImageIds.map((imgId) => {
                         const displaySrc = imageSrcs[imgId] || ''
+                        const isLoaded = loadedReferenceImageIds.includes(imgId)
+                        const hasFailed = failedReferenceImageIds.includes(imgId)
                         return (
                           <div key={imgId} className="relative group inline-block">
+                            {displaySrc && !isLoaded && !hasFailed && (
+                              <div className="absolute inset-0 shimmer-skeleton z-10 rounded-lg pointer-events-none" />
+                            )}
                             <div
                               className="relative w-16 h-16 rounded-lg overflow-hidden border cursor-pointer hover:opacity-80 transition border-gray-200 dark:border-white/[0.08]"
                               onClick={() => setLightboxImageId(imgId, allInputImageIds)}
                             >
-                              {displaySrc && (
+                              {hasFailed ? (
+                                <div className="flex h-full w-full items-center justify-center bg-gray-100 text-[10px] text-gray-400 dark:bg-white/[0.04] dark:text-gray-500">
+                                  失效
+                                </div>
+                              ) : displaySrc ? (
                                 <img
                                   src={displaySrc}
                                   data-image-id={imgId}
                                   className="w-full h-full object-cover"
                                   alt=""
+                                  onLoad={() => handleReferenceImageLoad(imgId)}
+                                  onError={() => handleReferenceImageError(imgId)}
                                 />
+                              ) : (
+                                <div className="absolute inset-0 shimmer-skeleton rounded-lg pointer-events-none" />
                               )}
                             </div>
                           </div>

@@ -7,7 +7,6 @@ import { formatImageRatio } from '../lib/size'
 import { getParamDisplay, getResolutionDisplay, ActualValueBadge } from '../lib/paramDisplay'
 import { CodeIcon } from './icons'
 import ViewportTooltip from './ViewportTooltip'
-import SmoothImage from './ui/SmoothImage'
 
 interface Props {
   task: TaskRecord
@@ -70,6 +69,8 @@ export default function TaskCard({
   disableSwipe,
 }: Props) {
   const [thumbSrc, setThumbSrc] = useState<string>('')
+  const [thumbSrcLoaded, setThumbSrcLoaded] = useState(false)
+  const [thumbSrcFailed, setThumbSrcFailed] = useState(false)
   const [coverRatio, setCoverRatio] = useState<string>('')
   const [coverSize, setCoverSize] = useState<string>('')
   const [now, setNow] = useState(Date.now())
@@ -258,6 +259,8 @@ export default function TaskCard({
     setCoverRatio('')
     setCoverSize('')
     setThumbSrc('')
+    setThumbSrcLoaded(false)
+    setThumbSrcFailed(false)
 
     let cancelled = false
     const imageId = task.outputImages?.[0]
@@ -393,6 +396,16 @@ export default function TaskCard({
     } finally {
       setIsTransferringImages(false)
     }
+  }
+
+  const handleThumbLoad = () => {
+    setThumbSrcLoaded(true)
+    setThumbSrcFailed(false)
+  }
+
+  const handleThumbError = () => {
+    setThumbSrcLoaded(false)
+    setThumbSrcFailed(true)
   }
 
   return (
@@ -552,14 +565,17 @@ export default function TaskCard({
               </span>
             </div>
           )}
-          {task.status === 'done' && thumbSrc && (
+          {task.status === 'done' && thumbSrc && !thumbSrcFailed && (
             <>
+              {!thumbSrcLoaded && <div className="absolute inset-0 shimmer-skeleton z-10 rounded-lg pointer-events-none"/>}
               <img
                 src={thumbSrc}
                 data-image-id={task.outputImages[0]}
                 data-output-image-ids={task.outputImages.join(',')}
                 className="saveable-image w-full h-full object-cover transition-transform duration-500 hover:scale-105"
                 loading="lazy"
+                onLoad={handleThumbLoad}
+                onError={handleThumbError}
                 alt=""
               />
               {task.outputImages.length > 1 && (
@@ -569,7 +585,7 @@ export default function TaskCard({
               )}
             </>
           )}
-          {task.status === 'done' && !thumbSrc && (
+          {task.status === 'done' && (!thumbSrc || thumbSrcFailed) && (
             <svg
               className="w-8 h-8 text-gray-300"
               fill="none"
