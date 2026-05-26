@@ -159,6 +159,7 @@ function createClientTaskRecord(params: {
     inputImageIds: string[]
     maskTargetImageId: string | null
     maskImageId: string | null
+    groupId: string | null
     apiProfile: ApiProfile
     customProviderSnapshot: CustomProviderDefinition | null
     now: number
@@ -205,6 +206,8 @@ function createClientTaskRecord(params: {
         rawImageUrls: undefined,
         rawResponsePayload: undefined,
 
+        groupId: params.groupId ?? undefined,
+
         status: 'created',
         error: null,
         createdAt: params.now,
@@ -243,6 +246,10 @@ export async function POST(request: Request) {
         const maskImageId =
             typeof body.maskImageId === 'string' && body.maskImageId.trim()
                 ? body.maskImageId.trim()
+                : null
+        const groupId =
+            typeof body.groupId === 'string' && body.groupId.trim()
+                ? body.groupId.trim()
                 : null
 
         const allImageIds = [
@@ -293,6 +300,7 @@ export async function POST(request: Request) {
         finished_at,
         elapsed,
         is_favorite,
+        group_id,
         cost,
         provider_task_id,
         provider_status,
@@ -374,6 +382,7 @@ export async function POST(request: Request) {
             maskImageId,
             apiProfile,
             customProviderSnapshot,
+            groupId,
             now,
             idempotencyKey,
         })

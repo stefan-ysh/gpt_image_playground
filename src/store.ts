@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
+
 import type {
   StateStorage,
 } from 'zustand/middleware'
@@ -362,6 +363,44 @@ async function persistGeneratedImage(dataUrl: string, taskId: string): Promise<s
   }
 
   throw new Error(result.error || '图片转存失败')
+}
+
+async function submitWorkerGenerationTask(options: {
+  prompt: string
+  params: TaskParams
+  inputImages: InputImage[]
+  maskTargetImageId?: string | null
+  maskImageId?: string | null
+  settings: AppSettings
+  groupId?: string | null
+}): Promise<TaskRecord> {
+  const activeProfile = getActiveApiProfile(options.settings)
+
+  if (!activeProfile) {
+    throw new Error('请先选择可用的 API 配置')
+  }
+
+  const validationError = validateApiProfile(activeProfile)
+
+  if (validationError) {
+    throw new Error(validationError)
+  }
+
+  const customProviderSnapshot = getCustomProviderDefinition(
+    options.settings,
+    activeProfile.provider,
+  )
+
+  return createGenerationTask({
+    prompt: options.prompt,
+    params: options.params,
+    inputImageIds: options.inputImages.map((image) => image.id),
+    maskTargetImageId: options.maskTargetImageId ?? null,
+    maskImageId: options.maskImageId ?? null,
+    apiProfileSnapshot: activeProfile,
+    customProviderSnapshot,
+    groupId: options.groupId ?? null,
+  })
 }
 
 function getCachedThumbnail(id: string) {
@@ -2068,119 +2107,139 @@ if (typeof window !== 'undefined') {
 }
 
 /** 提交新任务 */
-export async function submitTask(options: { allowFullMask?: boolean; useCurrentApiProfileWhenReusedMissing?: boolean } = {}) {
-  const { settings, prompt, inputImages, params, reusedTaskApiProfileId, reusedTaskApiProfileName, reusedTaskApiProfileMissing, showToast, setConfirmDialog, selectedGroupId } =
-    useStore.getState()
+export async function submitTask(
+  options: {
+    allowFullMask?: boolean
+    useCurrentApiProfileWhenReusedMissing?: boolean
+  } = {},
+) {
+  const state = useStore.getState()
+  const {
+    prompt,
+    params,
+    inputImages,
+    maskEditorImageId,
+    settings,
+    reusedTaskApiProfileId,
+    reusedTaskApiProfileName,
+    reusedTaskApiProfileMissing,
+    selectedGroupId,
+    setReusedTaskApiProfile,
+    setTasks,
+    tasks,
+    showToast,
+  } = state
 
-  const normalizedSettings = normalizeSettings(settings)
-  let activeProfile = getActiveApiProfile(settings)
-  let requestSettings = createSettingsForApiProfile(normalizedSettings, activeProfile)
-  if (reusedTaskApiProfileId || reusedTaskApiProfileMissing) {
-    const reusedProfile = getReusedTaskApiProfile(normalizedSettings, reusedTaskApiProfileId)
-    if (!reusedProfile) {
-      if (options.useCurrentApiProfileWhenReusedMissing) {
-        useStore.getState().setReusedTaskApiProfile(null)
-      } else {
-        setConfirmDialog({
-          title: '找不到 API 配置',
-          message: `找不到复用任务所使用的 API 配置「${reusedTaskApiProfileName || '未知配置'}」，要使用当前的 API 配置「${activeProfile.name}」提交任务吗？`,
-          confirmText: '使用当前配置提交',
-          cancelText: '放弃提交',
-          action: () => {
-            void submitTask({ ...options, useCurrentApiProfileWhenReusedMissing: true })
-          },
-        })
-        return
-      }
-    } else {
-      activeProfile = reusedProfile
-      requestSettings = createSettingsForApiProfile(normalizedSettings, reusedProfile)
-    }
-  }
+  const trimmedPrompt = prompt.trim()
 
-  if (validateApiProfile(activeProfile)) {
-    showToast(`请先完善请求 API 配置：${validateApiProfile(activeProfile)}`, 'error')
-    useStore.getState().setShowSettings(true)
-    return
-  }
-
-  if (!prompt.trim()) {
+  if (!trimmedPrompt) {
     showToast('请输入提示词', 'error')
     return
   }
 
-  const taskId = genId()
-
-  // 建立临时 ID 到真实物理 ID 的映射表
-  const idMap: Record<string, string> = {}
-  const uploadedImages: InputImage[] = []
-
-  // 1. 统一后台延迟上传本地临时图片到对象存储任务目录 uploads/${taskId}/reference/images/
-  for (const img of inputImages) {
-    if (img.id.startsWith('temp-')) {
-      const realId = await storeImage(img.dataUrl, 'upload', taskId)
-      cacheImage(realId, img.dataUrl) // 本地内存缓存登记
-      idMap[img.id] = realId
-      uploadedImages.push({ id: realId, dataUrl: img.dataUrl, editSource: img.editSource })
-    } else {
-      uploadedImages.push(img)
-    }
-  }
-
-  // 2. 如果存在临时 ID 到真实哈希 ID 的升级，前端自动完成 mentions 和 Store 替换
-  if (Object.keys(idMap).length > 0) {
-    useStore.getState().setInputImages(uploadedImages, { equivalentImageIds: idMap })
-  }
-
-  const normalizedParams = normalizeParamsForSettings(params, requestSettings, { hasInputImages: uploadedImages.length > 0 })
-  const normalizedParamPatch = getChangedParams(params, normalizedParams)
-  if (Object.keys(normalizedParamPatch).length) {
-    useStore.getState().setParams(normalizedParamPatch)
-  }
-
-  const task: TaskRecord = {
-    id: taskId,
-    prompt: prompt.trim(),
-    params: normalizedParams,
-    apiProvider: activeProfile.provider,
-    apiProfileId: activeProfile.id,
-    apiProfileName: activeProfile.name,
-    apiMode: activeProfile.apiMode,
-    apiModel: activeProfile.model,
-    apiProfileSnapshot: { ...activeProfile },
-    customProviderSnapshot: getCustomProviderDefinition(settings, activeProfile.provider) ?? undefined,
-    inputImageIds: uploadedImages.map((i) => i.id),
-    maskTargetImageId: uploadedImages.find((image) => image.editSource === 'mask')?.id ?? null,
-    maskImageId: null,
-    outputImages: [],
-    status: 'running',
-    error: null,
-    createdAt: Date.now(),
-    finishedAt: null,
-    elapsed: null,
-    ownerFingerprint: getCurrentFingerprint(settings),
-    groupId: selectedGroupId && selectedGroupId !== 'unassigned' ? selectedGroupId : undefined,
-  }
-
-  const latestTasks = useStore.getState().tasks
-  useStore.getState().setTasks([task, ...latestTasks])
-  try {
-    await putTask(task)
-  } catch (err) {
-    useStore.getState().setTasks(latestTasks)
-    showToast(err instanceof Error ? err.message : '提交任务失败', 'error')
+  if (inputImages.length > 16) {
+    showToast('参考图最多支持 16 张', 'error')
     return
   }
-  useStore.getState().showToast('任务已提交', 'success')
 
-  if (settings.clearInputAfterSubmit) {
-    useStore.getState().setPrompt('')
-    useStore.getState().clearInputImages()
+  let activeSettings = settings
+
+  if (
+    reusedTaskApiProfileMissing &&
+    reusedTaskApiProfileId &&
+    !options.useCurrentApiProfileWhenReusedMissing
+  ) {
+    const missingName = reusedTaskApiProfileName || reusedTaskApiProfileId
+
+    useStore.setState({
+      confirmDialog: {
+        title: '原 API 配置不可用',
+        message: `当前复用任务原本使用的 API 配置「${missingName}」已不存在。是否改用当前选中的 API 配置继续生成？`,
+        confirmText: '使用当前配置',
+        cancelText: '取消',
+        action: () => {
+          useStore.setState({ confirmDialog: null })
+          void submitTask({
+            ...options,
+            useCurrentApiProfileWhenReusedMissing: true,
+          })
+        },
+        cancelAction: () => {
+          useStore.setState({ confirmDialog: null })
+        },
+      },
+    })
+
+    return
   }
-  useStore.getState().setReusedTaskApiProfile(null)
 
-  // 异步调用 API
-  executeTask(taskId)
+  if (options.useCurrentApiProfileWhenReusedMissing) {
+    setReusedTaskApiProfile(null, false, null)
+    activeSettings = useStore.getState().settings
+  }
+
+  const activeProfile = getActiveApiProfile(activeSettings)
+
+  if (!activeProfile) {
+    showToast('请先选择可用的 API 配置', 'error')
+    return
+  }
+
+  const validationError = validateApiProfile(activeProfile)
+
+  if (validationError) {
+    showToast(validationError, 'error')
+    return
+  }
+
+  const normalizedParams = normalizeParamsForSettings(params, activeSettings)
+
+  const maskTargetImageId =
+    maskEditorImageId && inputImages.some((image) => image.id === maskEditorImageId)
+      ? maskEditorImageId
+      : null
+
+  const maskImageId = null
+
+  const apiPrompt = replaceImageMentionsForApi(trimmedPrompt, inputImages.length)
+
+  const workerGroupId =
+    selectedGroupId && selectedGroupId !== 'unassigned'
+      ? selectedGroupId
+      : null
+
+  try {
+    const workerTask = await submitWorkerGenerationTask({
+      prompt: apiPrompt,
+      params: normalizedParams,
+      inputImages,
+      maskTargetImageId,
+      maskImageId,
+      settings: activeSettings,
+      groupId: workerGroupId,
+    })
+
+    const nextTasks = tasks.some((task) => task.id === workerTask.id)
+      ? tasks.map((task) => (task.id === workerTask.id ? workerTask : task))
+      : [workerTask, ...tasks]
+
+    setTasks(nextTasks)
+
+    if (activeSettings.clearInputAfterSubmit) {
+      useStore.setState((s) =>
+        syncActiveInputDraft(s, {
+          prompt: '',
+          inputImages: [],
+          maskEditorImageId: null,
+        }),
+      )
+    }
+
+    showToast('任务已提交后台生成', 'success')
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    showToast(message, 'error')
+  }
 }
 
 function addInputDraftReferencedImageIds(target: Set<string>, draft: InputDraft | null) {
@@ -2374,6 +2433,7 @@ async function executeTask(taskId: string) {
     }
 
     const result = await callImageApi({
+
       settings: requestSettings,
       prompt: replaceImageMentionsForApi(task.prompt, inputDataUrls.length),
       params: task.params,

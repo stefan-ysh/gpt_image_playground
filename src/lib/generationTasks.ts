@@ -14,6 +14,7 @@ export interface CreateGenerationTaskInput {
     apiProfileSnapshot: ApiProfile
     customProviderSnapshot?: CustomProviderDefinition | null
     taskId?: string
+    groupId?: string | null
 }
 
 async function readJsonResponse(response: Response) {
