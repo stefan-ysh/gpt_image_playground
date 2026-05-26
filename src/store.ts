@@ -98,6 +98,27 @@ function isErrorToastTitle(title: string): boolean {
 }
 
 export type SettingsTab = 'general' | 'data' | 'about'
+type ThemePreference = AppSettings['theme']
+const THEME_STORAGE_KEY = 'gpt-image-theme'
+
+function readStoredThemePreference(): ThemePreference | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const value = window.localStorage.getItem(THEME_STORAGE_KEY)
+    return value === 'light' || value === 'dark' || value === 'system' ? value : null
+  } catch {
+    return null
+  }
+}
+
+function writeStoredThemePreference(theme: ThemePreference) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme)
+  } catch {
+    // 主题偏好只是首屏兜底，写入失败不影响核心功能。
+  }
+}
 
 const TIMEOUT_STREAMING_HINT = '也可尝试打开「流式传输」，并提高「请求中间步骤图像数」来维持连接。'
 const TIMEOUT_PARTIAL_IMAGES_ZERO_HINT = '官方流式接口不发送心跳，当前「请求中间步骤图像数」为 0，连接可能因无数据传输而断开。建议提高到 2 或 3。'
@@ -617,7 +638,11 @@ function mergePersistedState(persistedState: unknown, currentState: AppState): A
   if (!persistedState || typeof persistedState !== 'object') return currentState
 
   const persisted = persistedState as Partial<AppState>
-  const settings = normalizeSettings(persisted.settings ?? currentState.settings)
+  const localTheme = readStoredThemePreference()
+  const settings = normalizeSettings({
+    ...(persisted.settings ?? currentState.settings),
+    ...(localTheme ? { theme: localTheme } : {}),
+  })
   const persistedParams = persisted.params
     ? (() => {
       const { quality: _ignoredQuality, ...paramsWithoutQuality } = persisted.params as typeof persisted.params & { quality?: unknown }
@@ -967,7 +992,10 @@ export const useStore = create<AppState>()(
   persist(
     (set) => ({
       // Settings
-      settings: { ...DEFAULT_SETTINGS },
+      settings: {
+        ...DEFAULT_SETTINGS,
+        theme: readStoredThemePreference() ?? DEFAULT_SETTINGS.theme,
+      },
 
       // 侧边栏与当前选中分组
       sidebarOpen: false,
@@ -988,7 +1016,7 @@ export const useStore = create<AppState>()(
       setTasksHasMore: (hasMore) => set({ tasksHasMore: hasMore }),
       setTasksLoading: (loading) => set({ tasksLoading: loading }),
       loadMoreTasks: async (groupId, page, append = false) => {
-        const { tasksLoading, filterFavorite } = useStore.getState()
+        const { tasksLoading, filterFavorite, showToast } = useStore.getState()
         if (tasksLoading) return
 
         set({ tasksLoading: true })
@@ -1069,6 +1097,7 @@ export const useStore = create<AppState>()(
           }
         } catch (e) {
           console.error('Failed to load tasks:', e)
+          showToast(e instanceof Error ? e.message : '加载任务失败', 'error')
         } finally {
           set({ tasksLoading: false })
         }
@@ -1303,6 +1332,7 @@ export const useStore = create<AppState>()(
       // 分组管理
       createGroup: async (name) => {
         const newGroup = { id: genId(), name, createdAt: Date.now() }
+        const showToast = useStore.getState().showToast
         try {
           const res = await fetch('/api/groups', {
             method: 'POST',
@@ -1316,12 +1346,18 @@ export const useStore = create<AppState>()(
               const groups = [...(s.settings.groups ?? []), newGroup]
               return { settings: { ...s.settings, groups } }
             })
+            showToast(`已新建分组「${name}」`, 'success')
+          } else {
+            showToast(json.error || '新建分组失败', 'error')
           }
         } catch (e) {
           console.error('Failed to create group:', e)
+          showToast(e instanceof Error ? e.message : '新建分组失败', 'error')
         }
       },
       deleteGroup: async (id) => {
+        const showToast = useStore.getState().showToast
+        const deletedName = useStore.getState().settings.groups?.find((group) => group.id === id)?.name ?? '分组'
         try {
           const res = await fetch(`/api/groups?id=${encodeURIComponent(id)}`, {
             method: 'DELETE',
@@ -1339,9 +1375,13 @@ export const useStore = create<AppState>()(
             if (selectedGroupId === id) {
               setSelectedGroupId('unassigned')
             }
+            showToast(`已删除分组「${deletedName}」`, 'success')
+          } else {
+            showToast(json.error || '删除分组失败', 'error')
           }
         } catch (e) {
           console.error('Failed to delete group:', e)
+          showToast(e instanceof Error ? e.message : '删除分组失败', 'error')
         }
       },
       renameGroup: async (id, name) => {
@@ -1349,6 +1389,7 @@ export const useStore = create<AppState>()(
         const target = (settings.groups ?? []).find((g) => g.id === id)
         if (!target) return
 
+        const showToast = useStore.getState().showToast
         const updatedGroup = { ...target, name }
         try {
           const res = await fetch('/api/groups', {
@@ -1363,13 +1404,18 @@ export const useStore = create<AppState>()(
               const groups = (s.settings.groups ?? []).map((g) => g.id === id ? { ...g, name } : g)
               return { settings: { ...s.settings, groups } }
             })
+            showToast(`已重命名为「${name}」`, 'success')
+          } else {
+            showToast(json.error || '重命名分组失败', 'error')
           }
         } catch (e) {
           console.error('Failed to rename group:', e)
+          showToast(e instanceof Error ? e.message : '重命名分组失败', 'error')
         }
       },
       assignTaskToGroup: (taskId, groupId) => {
         updateTaskInStore(taskId, { groupId: groupId ?? undefined })
+        useStore.getState().showToast(groupId ? '已归类到指定分组' : '已移至未分类', 'success')
       },
     }),
     {
@@ -1759,9 +1805,12 @@ export async function initStore() {
     const json = await res.json()
     if (json.success) {
       useStore.getState().setSettings({ groups: json.data })
+    } else {
+      useStore.getState().showToast(json.error || '加载分组失败', 'error')
     }
   } catch (e) {
     console.error('Failed to init groups:', e)
+    useStore.getState().showToast(e instanceof Error ? e.message : '加载分组失败', 'error')
   }
 
   // 2. 默认加载当前选中分组第一页任务（初始为 unassigned）
@@ -1936,12 +1985,13 @@ function applyTheme(theme: 'light' | 'dark' | 'system') {
 
 if (typeof window !== 'undefined') {
   let lastTheme: string | undefined = undefined
+  applyTheme(readStoredThemePreference() ?? useStore.getState().settings?.theme ?? 'system')
   useStore.subscribe((state) => {
     const newTheme = state.settings?.theme || 'system'
     if (newTheme !== lastTheme) {
       lastTheme = newTheme
       applyTheme(newTheme)
-      localStorage.setItem('gpt-image-theme', newTheme)
+      writeStoredThemePreference(newTheme)
     }
   })
 
