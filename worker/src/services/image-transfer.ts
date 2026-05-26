@@ -82,6 +82,7 @@ export async function processSucceededRawTask(task: DbTask) {
         userId: task.user_id,
         dataUrl: imageUrl,
         source: 'generated',
+        role: 'output',
       })
 
       outputImageIds.push(stored.id)

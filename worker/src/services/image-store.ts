@@ -2,8 +2,8 @@ import crypto from 'node:crypto'
 import net from 'node:net'
 import { lookup } from 'node:dns/promises'
 import mime from 'mime'
-import COS from 'cos-nodejs-sdk-v5'
 import { pool } from '../db/pool.js'
+import { uploadBufferToCos } from './cos-client.js'
 
 const MAX_STORED_IMAGE_BYTES = 60 * 1024 * 1024
 const EXTERNAL_FETCH_TIMEOUT_MS = 15000
@@ -23,6 +23,7 @@ export interface StoreImageForTaskInput {
   userId: string
   dataUrl: string
   source: StoredImageSource
+  role?: 'input' | 'mask-target' | 'mask' | 'output'
 }
 
 export interface StoreImageForTaskResult {
@@ -100,7 +101,7 @@ async function assertPublicImageUrl(input: string) {
   }
 }
 
-function parseBase64(dataUrl: string): {
+export function parseBase64Image(dataUrl: string): {
   buffer: Buffer
   contentType: string
   ext: string
@@ -165,7 +166,7 @@ async function fetchPublicUrl(
   return response
 }
 
-async function fetchExternal(url: string): Promise<{
+export async function fetchExternalImage(url: string): Promise<{
   buffer: Buffer
   contentType: string
   ext: string
@@ -216,68 +217,6 @@ async function fetchExternal(url: string): Promise<{
   }
 }
 
-function getCosConfig() {
-  const secretId = process.env.COS_SECRET_ID || ''
-  const secretKey = process.env.COS_SECRET_KEY || ''
-  const bucket = process.env.COS_BUCKET || ''
-  const region = process.env.COS_REGION || ''
-  const publicBaseUrl =
-    process.env.COS_PUBLIC_BASE_URL ||
-    process.env.COS_DOMAIN ||
-    ''
-
-  if (!secretId || !secretKey || !bucket || !region) {
-    throw new Error('COS 配置不完整，请检查 COS_SECRET_ID/COS_SECRET_KEY/COS_BUCKET/COS_REGION')
-  }
-
-  return {
-    secretId,
-    secretKey,
-    bucket,
-    region,
-    publicBaseUrl,
-  }
-}
-
-async function uploadBufferToCos(
-  buffer: Buffer,
-  key: string,
-  contentType: string,
-): Promise<string> {
-  const config = getCosConfig()
-
-  const cos = new COS({
-    SecretId: config.secretId,
-    SecretKey: config.secretKey,
-  })
-
-  await new Promise<void>((resolve, reject) => {
-    cos.putObject(
-      {
-        Bucket: config.bucket,
-        Region: config.region,
-        Key: key,
-        Body: buffer,
-        ContentType: contentType,
-      },
-      (err) => {
-        if (err) {
-          reject(err)
-          return
-        }
-
-        resolve()
-      },
-    )
-  })
-
-  if (config.publicBaseUrl.trim()) {
-    return `${config.publicBaseUrl.replace(/\/+$/, '')}/${key}`
-  }
-
-  return `/api/files/cos/${key}`
-}
-
 function getSubFolder(source: StoredImageSource) {
   if (source === 'upload' || source === 'reference') {
     return 'reference/images'
@@ -290,7 +229,7 @@ function getSubFolder(source: StoredImageSource) {
   return 'images'
 }
 
-function getTaskImageIdHash(imageId: string) {
+export function getTaskImageIdHash(imageId: string) {
   return crypto.createHash('sha256').update(imageId).digest('hex')
 }
 
@@ -401,13 +340,13 @@ function normalizeRelativeCosUrl(value: string) {
   return value
 }
 
-async function readImageInput(dataUrl: string): Promise<{
+export async function readImageInput(dataUrl: string): Promise<{
   buffer: Buffer
   contentType: string
   ext: string
 }> {
   if (dataUrl.startsWith('data:')) {
-    const parsed = parseBase64(dataUrl)
+    const parsed = parseBase64Image(dataUrl)
 
     if (!parsed) {
       throw new Error('无效的 base64 图片格式')
@@ -417,11 +356,11 @@ async function readImageInput(dataUrl: string): Promise<{
   }
 
   if (/^https?:\/\//i.test(dataUrl)) {
-    return fetchExternal(dataUrl)
+    return fetchExternalImage(dataUrl)
   }
 
   if (isRelativeCosProxyPath(dataUrl)) {
-    throw new Error('Worker 不应转存相对 COS 路径，请传入公网 URL 或 data URL')
+    throw new Error('不能通过 image-store 重新转存相对 COS 路径，请使用 input-images 从 COS 读取')
   }
 
   throw new Error('不支持的图片输入格式')
@@ -465,6 +404,7 @@ export async function storeImageForTask(
     cosUrl = existing.dataUrl
   } else {
     cosUrl = await uploadBufferToCos(buffer, key, contentType)
+
     await saveImageRecord({
       id,
       dataUrl: cosUrl,
@@ -474,10 +414,9 @@ export async function storeImageForTask(
 
   await insertImageOwner(id, userId)
 
-  let thumbnailDataUrl = existing?.thumbnailDataUrl || cosUrl
+  const thumbnailDataUrl = existing?.thumbnailDataUrl || cosUrl
 
   // Worker 端暂不生成小图，先用原图作为缩略图，保证前端可显示。
-  // 后续可以单独加 sharp/jimp 生成 720px webp 缩略图。
   await saveThumbnailRecord({
     id,
     thumbnailDataUrl,
@@ -487,7 +426,7 @@ export async function storeImageForTask(
     taskId,
     userId,
     imageId: id,
-    role: source === 'generated' ? 'output' : 'input',
+    role: input.role || (source === 'generated' ? 'output' : 'input'),
   })
 
   return {

@@ -1,9 +1,10 @@
 import type { DbTask } from '../db/tasks.js'
-import { getImageDataUrlsByIds, updateTaskStatus } from '../db/tasks.js'
+import { updateTaskStatus } from '../db/tasks.js'
 import { getProvider } from '../providers/index.js'
 import { getNextBackoffMs } from '../utils/backoff.js'
 import { notifyTaskUpdated } from './notifier.js'
 import { processSucceededRawTask } from './image-transfer.js'
+import { resolveTaskInputImageDataUrls } from './input-images.js'
 
 function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback
@@ -26,39 +27,6 @@ function getCustomProviderSnapshot(task: DbTask) {
   )
 }
 
-function normalizeProviderInputImageUrl(url: string) {
-  if (url.startsWith('data:')) return url
-  if (/^https?:\/\//i.test(url)) return url
-
-  if (url.startsWith('/api/files/cos/')) {
-    const publicBase =
-      process.env.PUBLIC_APP_ORIGIN || process.env.NEXT_PUBLIC_APP_ORIGIN
-
-    if (!publicBase) {
-      throw new Error(
-        '参考图是相对路径，但缺少 PUBLIC_APP_ORIGIN，无法提供给服务商访问',
-      )
-    }
-
-    return `${publicBase.replace(/\/+$/, '')}${url}`
-  }
-
-  if (url.startsWith('uploads/')) {
-    const publicBase =
-      process.env.PUBLIC_APP_ORIGIN || process.env.NEXT_PUBLIC_APP_ORIGIN
-
-    if (!publicBase) {
-      throw new Error(
-        '参考图是 COS 相对路径，但缺少 PUBLIC_APP_ORIGIN，无法提供给服务商访问',
-      )
-    }
-
-    return `${publicBase.replace(/\/+$/, '')}/api/files/cos/${url}`
-  }
-
-  return url
-}
-
 async function toProviderTaskInput(task: DbTask) {
   const params = safeJsonParse<Record<string, unknown>>(task.params, {})
   const profile = getApiProfile(task)
@@ -77,10 +45,7 @@ async function toProviderTaskInput(task: DbTask) {
         ? profile.api_key
         : ''
 
-  const inputImageIds = safeJsonParse<string[]>(task.input_image_ids, [])
-  const inputImageUrls = (await getImageDataUrlsByIds(inputImageIds))
-    .map(normalizeProviderInputImageUrl)
-    .slice(0, 16)
+  const inputImageUrls = await resolveTaskInputImageDataUrls(task)
 
   return {
     id: task.id,
@@ -141,8 +106,8 @@ async function submitProviderTask(task: DbTask) {
 
     const immediateRaw =
       result.raw &&
-      typeof result.raw === 'object' &&
-      'immediateSuccess' in result.raw
+        typeof result.raw === 'object' &&
+        'immediateSuccess' in result.raw
         ? (result.raw as any)
         : null
 
