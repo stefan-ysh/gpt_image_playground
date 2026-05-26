@@ -171,6 +171,50 @@ export function PhotoIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
+export function FolderIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7.75A2.75 2.75 0 015.75 5h4.38c.72 0 1.4.34 1.84.91l.8 1.06c.25.33.64.53 1.05.53h4.43A2.75 2.75 0 0121 10.25v5.5A3.25 3.25 0 0117.75 19H6.25A3.25 3.25 0 013 15.75v-8z" />
+    </svg>
+  )
+}
+
+export function TagIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.75 12.6V5.75a2 2 0 012-2h6.85c.53 0 1.04.21 1.42.59l5.64 5.64a2 2 0 010 2.83l-6.85 6.85a2 2 0 01-2.83 0l-5.64-5.64a2 2 0 01-.59-1.42z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.25 8.25h.01" />
+    </svg>
+  )
+}
+
+export function AspectRatioIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" {...props}>
+      <rect x="3.75" y="6.25" width="16.5" height="11.5" rx="2" strokeWidth={2} />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h3M8 10v3M16 14h-3M16 14v-3" />
+    </svg>
+  )
+}
+
+export function ResolutionIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" {...props}>
+      <rect x="4" y="5" width="16" height="12" rx="2" strokeWidth={2} />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 20h8M12 17v3M8 9h8M8 12h5" />
+    </svg>
+  )
+}
+
+export function ModelIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" {...props}>
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 4h8l4 4v8l-4 4H8l-4-4V8l4-4z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6M12 9v6" />
+    </svg>
+  )
+}
+
 export function FavoriteIcon({ filled, ...props }: SVGProps<SVGSVGElement> & { filled?: boolean }) {
   return (
     <svg fill={filled ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24" {...props}>

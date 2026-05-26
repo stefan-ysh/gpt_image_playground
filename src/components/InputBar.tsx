@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 import { useHintTooltip } from '../hooks/useHintTooltip'
@@ -13,8 +13,7 @@ import { isSupported4KRatio, normalizeImageSize } from '../lib/size'
 import { dismissAllTooltips } from '../lib/tooltipDismiss'
 import { addImageFromFile, createInputImageFromFile, deleteImageIfUnreferenced, ensureImageCached, removeMultipleTasks, submitTask, updateTaskInStore, useStore } from '../store'
 import { DEFAULT_PARAMS } from '../types'
-import { CloseIcon } from './icons'
-import Select from './Select'
+import { AspectRatioIcon, CloseIcon, FolderIcon, ModelIcon, ResolutionIcon, TagIcon } from './icons'
 import SizePickerModal from './SizePickerModal'
 import ViewportTooltip from './ViewportTooltip'
 import Dialog from './ui/Dialog'
@@ -493,6 +492,29 @@ export default function InputBar() {
   const [showMobileUploadMenu, setShowMobileUploadMenu] = useState(false)
   const [showModelDropdown, setShowModelDropdown] = useState(false)
   const [showResolutionDropdown, setShowResolutionDropdown] = useState(false)
+  const resolutionDropdownRef = useRef<HTMLDivElement>(null)
+  const modelDropdownRef = useRef<HTMLDivElement>(null)
+
+  const getDropdownPortalStyle = useCallback((anchor: HTMLElement | null, width: number): CSSProperties => {
+    if (!anchor) return { position: 'fixed', left: 12, bottom: 90, width, zIndex: 80 }
+
+    const rect = anchor.getBoundingClientRect()
+    const gap = 6
+    const padding = 12
+    const left = Math.min(
+      Math.max(padding, rect.left),
+      Math.max(padding, window.innerWidth - width - padding),
+    )
+
+    return {
+      position: 'fixed',
+      left,
+      top: Math.max(padding, rect.top - gap),
+      width,
+      transform: 'translateY(-100%)',
+      zIndex: 80,
+    }
+  }, [])
 
   const [imageDragIndex, setImageDragIndex] = useState<number | null>(null)
   const [imageDragOverIndex, setImageDragOverIndex] = useState<number | null>(null)
@@ -1141,7 +1163,6 @@ export default function InputBar() {
     }
   }, [])
 
-  const selectClass = 'px-3 py-1.5 rounded-xl border border-gray-200/60 dark:border-white/12 bg-white/50 dark:bg-gray-900/60 hover:bg-white dark:hover:bg-gray-800 text-xs dark:text-gray-100 transition-all duration-200 shadow-sm font-medium'
 
   const getTouchDropIndex = (touch: React.Touch) => {
     const target = document
@@ -1424,58 +1445,6 @@ export default function InputBar() {
     )
   }
 
-  const renderParams = (cols: string) => (
-    <div className={`grid ${cols} gap-2 text-xs flex-1`}>
-      <label
-        className="relative flex flex-col gap-0.5"
-        onMouseEnter={sizeHint.show}
-        onMouseLeave={sizeHint.hide}
-        onTouchStart={sizeHint.startTouch}
-        onTouchEnd={sizeHint.clearTimer}
-        onTouchCancel={sizeHint.hide}
-        onClick={sizeHint.show}
-      >
-        <span className="text-gray-700 dark:text-gray-200 font-medium ml-1">尺寸</span>
-        <button
-          type="button"
-          onClick={() => { dismissAllTooltips(); setShowSizePicker(true) }}
-          className="px-3 py-1.5 rounded-xl border border-gray-200/60 dark:border-white/12 bg-white/50 dark:bg-gray-900/60 hover:bg-white dark:hover:bg-gray-800 focus:outline-none text-xs text-left dark:text-gray-100 transition-all duration-200 shadow-sm font-mono font-medium"
-          title="选择尺寸"
-        >
-          {displaySize}
-        </button>
-        <ButtonTooltip
-          visible={isFalTextToImage && sizeHint.visible}
-          text={<>当前服务商的文生图模式不支持 <code className="rounded bg-white/10 px-1 py-0.5 font-mono">auto</code> 参数</>}
-        />
-      </label>
-      <label
-        className="relative flex flex-col gap-0.5"
-        onMouseEnter={qualityHint.show}
-        onMouseLeave={qualityHint.hide}
-        onTouchStart={qualityHint.startTouch}
-        onTouchEnd={qualityHint.clearTimer}
-        onTouchCancel={qualityHint.hide}
-        onClick={qualityHint.show}
-      >
-        <span className="text-gray-700 dark:text-gray-200 font-medium ml-1">
-          分辨率
-        </span>
-        <Select
-          value={params.resolution}
-          onChange={(val) => {
-            setParams({ resolution: val as any })
-          }}
-          options={qualityOptions}
-          className={selectClass}
-        />
-        <ButtonTooltip
-          visible={isFalProvider && qualityHint.visible}
-          text={isFalProvider ? <>当前服务商不支持 <code className="rounded bg-white/10 px-1 py-0.5 font-mono">auto</code> 分辨率参数</> : ''}
-        />
-      </label>
-    </div>
-  )
 
   return (
     <>
@@ -1736,15 +1705,15 @@ export default function InputBar() {
           </div>
 
           {/* 精致的底部工具栏 */}
-          <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-gray-100/60 dark:border-white/[0.04] text-gray-500">
+          <div className="mt-3 flex items-center justify-between gap-2 border-t border-gray-100/60 pt-2.5 text-gray-500 dark:border-white/[0.04]">
             {/* 左侧胶囊栏 */}
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-              {/* 1. 📎 上传附件图片 */}
+            <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pr-1 hide-scrollbar sm:flex-wrap sm:gap-2">
+              {/* 上传附件图片 */}
               <button
                 type="button"
                 onClick={() => !atImageLimit && fileInputRef.current?.click()}
                 disabled={atImageLimit}
-                className={`p-1.5 rounded-lg transition-all ${
+                className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl transition-all ${
                   atImageLimit
                     ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
                     : 'text-gray-400 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-white/[0.08]'
@@ -1756,82 +1725,86 @@ export default function InputBar() {
                 </svg>
               </button>
 
-              {/* 2. 📐 比例/尺寸胶囊 */}
+              {/* 比例/尺寸胶囊 */}
               <button
                 type="button"
                 onClick={() => { dismissAllTooltips(); setShowSizePicker(true) }}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200/50 dark:border-white/10 bg-white/40 dark:bg-white/[0.02] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-white/[0.06] transition-all text-[11px] font-semibold"
+                className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-gray-200/70 bg-white/55 px-2.5 text-[11px] font-semibold text-gray-600 transition-all hover:bg-white hover:text-gray-900 active:scale-[0.98] dark:border-white/10 dark:bg-white/[0.025] dark:text-gray-300 dark:hover:bg-white/[0.07] dark:hover:text-white"
                 title="选择图片比例"
               >
-                <span className="text-xs">📐</span>
-                <span>比例: {displaySize}</span>
+                <AspectRatioIcon className="h-4 w-4 shrink-0" />
+                <span className="whitespace-nowrap">比例: {displaySize}</span>
               </button>
 
-              {/* 3. 📺 分辨率胶囊 */}
-              {(
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowResolutionDropdown(!showResolutionDropdown);
-                      setShowModelDropdown(false);
-                    }}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200/50 dark:border-white/10 bg-white/40 dark:bg-white/[0.02] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-white/[0.06] transition-all text-[11px] font-semibold"
-                    title="选择生成分辨率"
-                  >
-                    <span className="text-xs">📺</span>
-                    <span>分辨率: {params.resolution}</span>
-                  </button>
-
-                  {/* 分辨率 Dropdown 菜单 */}
-                  {showResolutionDropdown && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setShowResolutionDropdown(false)} />
-                      <div className="absolute bottom-full left-0 mb-1.5 w-28 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700/60 p-1 z-50 animate-in fade-in slide-in-from-bottom-2 duration-150">
-                        {qualityOptions.map((opt) => (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => {
-                              setParams({ resolution: opt.value as any });
-                              setShowResolutionDropdown(false);
-                            }}
-                            className={`w-full px-2.5 py-1.5 text-left text-xs rounded-lg transition-colors flex items-center justify-between ${
-                              params.resolution === opt.value
-                                ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300 font-semibold'
-                                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.04]'
-                            }`}
-                          >
-                            <span>{opt.label}</span>
-                            {params.resolution === opt.value && <span className="text-[10px]">✓</span>}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* 4. 🤖 模型快捷切换胶囊 */}
-              <div className="relative">
+              {/* 分辨率胶囊 */}
+              <div ref={resolutionDropdownRef} className="relative">
                 <button
                   type="button"
                   onClick={() => {
-                    setShowModelDropdown(!showModelDropdown);
-                    setShowResolutionDropdown(false);
+                    setShowResolutionDropdown((visible) => !visible)
+                    setShowModelDropdown(false)
                   }}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-gray-200/50 dark:border-white/10 bg-white/40 dark:bg-white/[0.02] text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-white dark:hover:bg-white/[0.06] transition-all text-[11px] font-semibold"
+                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-gray-200/70 bg-white/55 px-2.5 text-[11px] font-semibold text-gray-600 transition-all hover:bg-white hover:text-gray-900 active:scale-[0.98] dark:border-white/10 dark:bg-white/[0.025] dark:text-gray-300 dark:hover:bg-white/[0.07] dark:hover:text-white"
+                  title="选择生成分辨率"
+                >
+                  <ResolutionIcon className="h-4 w-4 shrink-0" />
+                  <span className="whitespace-nowrap">分辨率: {params.resolution}</span>
+                </button>
+
+                {showResolutionDropdown && createPortal(
+                  <>
+                    <div className="fixed inset-0 z-[70]" onClick={() => setShowResolutionDropdown(false)} />
+                    <div
+                      className="rounded-2xl border border-gray-100 bg-white p-1 shadow-lg dark:border-gray-700/60 dark:bg-gray-800 animate-dropdown-up"
+                      style={getDropdownPortalStyle(resolutionDropdownRef.current, 128)}
+                    >
+                      {qualityOptions.map((opt) => (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => {
+                            setParams({ resolution: opt.value as any })
+                            setShowResolutionDropdown(false)
+                          }}
+                          className={`w-full px-2.5 py-1.5 text-left text-xs rounded-lg transition-colors flex items-center justify-between ${
+                            params.resolution === opt.value
+                              ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300 font-semibold'
+                              : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.04]'
+                          }`}
+                        >
+                          <span>{opt.label}</span>
+                          {params.resolution === opt.value && <span className="text-[10px]">✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </>,
+                  document.body,
+                )}
+              </div>
+
+              {/* 模型快捷切换胶囊 */}
+              <div ref={modelDropdownRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowModelDropdown((visible) => !visible)
+                    setShowResolutionDropdown(false)
+                  }}
+                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-gray-200/70 bg-white/55 px-2.5 text-[11px] font-semibold text-gray-600 transition-all hover:bg-white hover:text-gray-900 active:scale-[0.98] dark:border-white/10 dark:bg-white/[0.025] dark:text-gray-300 dark:hover:bg-white/[0.07] dark:hover:text-white"
                   title="切换生成模型"
                 >
-                  <span className="text-xs">🤖</span>
-                  <span className="font-mono">{activeProfile.model || 'gpt-image-2'}</span>
+                  <ModelIcon className="h-4 w-4 shrink-0" />
+                  <span className="whitespace-nowrap font-mono">{activeProfile.model || 'gpt-image-2'}</span>
                 </button>
 
                 {/* 模型 Dropdown 菜单 */}
-                {showModelDropdown && (
+                {showModelDropdown && createPortal(
                   <>
-                    <div className="fixed inset-0 z-40" onClick={() => setShowModelDropdown(false)} />
-                    <div className="absolute bottom-full left-0 mb-1.5 w-52 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700/60 p-1 z-50 animate-in fade-in slide-in-from-bottom-2 duration-150">
+                    <div className="fixed inset-0 z-[70]" onClick={() => setShowModelDropdown(false)} />
+                    <div
+                      className="rounded-2xl border border-gray-100 bg-white p-1 shadow-lg dark:border-gray-700/60 dark:bg-gray-800 animate-dropdown-up"
+                      style={getDropdownPortalStyle(modelDropdownRef.current, 208)}
+                    >
                       {[
                         { label: 'GPT-Image-2', value: 'gpt-image-2' },
                       ].map((opt) => (
@@ -1841,10 +1814,10 @@ export default function InputBar() {
                           onClick={() => {
                             const updatedProfiles = settings.profiles.map(p =>
                               p.id === settings.activeProfileId ? { ...p, model: opt.value } : p
-                            );
-                            setSettings({ profiles: updatedProfiles });
-                            setShowModelDropdown(false);
-                            showToast(`已切换模型至 ${opt.value}`, 'success');
+                            )
+                            setSettings({ profiles: updatedProfiles })
+                            setShowModelDropdown(false)
+                            showToast(`已切换模型至 ${opt.value}`, 'success')
                           }}
                           className={`w-full px-2.5 py-2 text-left text-xs rounded-lg transition-colors flex items-center justify-between ${
                             activeProfile.model === opt.value
@@ -1857,13 +1830,14 @@ export default function InputBar() {
                         </button>
                       ))}
                     </div>
-                  </>
+                  </>,
+                  document.body,
                 )}
               </div>
             </div>
 
             {/* 右侧发送及计数 */}
-            <div className="flex items-center gap-2 sm:gap-3 text-[11px] text-gray-400 dark:text-gray-500 font-semibold flex-shrink-0 ml-2">
+            <div className="ml-1 flex shrink-0 items-center gap-2 text-[11px] font-semibold text-gray-400 dark:text-gray-500 sm:ml-2 sm:gap-3">
               <span className="hidden xs:inline">
                 {prompt.length}字 {inputImages.length > 0 && ` · ${inputImages.length}参考图`}
               </span>
@@ -1933,7 +1907,7 @@ export default function InputBar() {
               className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 dark:border-white/[0.08] hover:bg-gray-100 dark:hover:bg-white/[0.04] transition-all text-sm font-semibold flex items-center justify-between text-gray-700 dark:text-gray-300"
             >
               <span className="flex items-center gap-2">
-                <span>📂</span>
+                <FolderIcon className="h-4 w-4 text-slate-400" />
                 <span>未分类</span>
               </span>
             </button>
@@ -1944,7 +1918,7 @@ export default function InputBar() {
                 className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 dark:border-white/[0.08] hover:bg-gray-100 dark:hover:bg-white/[0.04] transition-all text-sm font-semibold flex items-center justify-between text-gray-700 dark:text-gray-300"
               >
                 <span className="flex items-center gap-2">
-                  <span>🏷️</span>
+                  <TagIcon className="h-4 w-4 text-slate-400" />
                   <span>{g.name}</span>
                 </span>
               </button>

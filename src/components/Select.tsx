@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
+import type { CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
-import { DEFAULT_DROPDOWN_MAX_HEIGHT, getDropdownMaxHeight } from '../lib/dropdown'
+import { DEFAULT_DROPDOWN_MAX_HEIGHT } from '../lib/dropdown'
 import { ChevronDownIcon, EditIcon, PlusIcon, TrashIcon, DragHandleIcon } from './icons'
 
 interface Option {
@@ -26,8 +27,8 @@ interface SelectProps {
 
 export default function Select({ value, onChange, onReorder, options, disabled, className }: SelectProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const [menuMaxHeight, setMenuMaxHeight] = useState(DEFAULT_DROPDOWN_MAX_HEIGHT)
   const [placement, setPlacement] = useState<'bottom' | 'top'>('bottom')
+  const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null)
   const [draggedValue, setDraggedValue] = useState<string | number | null>(null)
   const [dragOverValue, setDragOverValue] = useState<string | number | null>(null)
   const [dragDropPosition, setDragDropPosition] = useState<'before' | 'after' | null>(null)
@@ -44,6 +45,7 @@ export default function Select({ value, onChange, onReorder, options, disabled, 
   const dragScrollIntervalRef = useRef<number | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   const selectedOption = options.find((o) => o.value === value)
 
@@ -76,7 +78,12 @@ export default function Select({ value, onChange, onReorder, options, disabled, 
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(target) &&
+        !menuRef.current?.contains(target)
+      ) {
         setIsOpen(false)
       }
     }
@@ -117,8 +124,14 @@ export default function Select({ value, onChange, onReorder, options, disabled, 
         maxHeight = Math.min(DEFAULT_DROPDOWN_MAX_HEIGHT, Math.floor(availableBelow))
       }
       
+      const resolvedMaxHeight = Math.max(0, maxHeight)
       setPlacement(newPlacement)
-      setMenuMaxHeight(Math.max(0, maxHeight))
+      setMenuStyle({
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - Math.max(rect.width, 180) - 8)),
+        top: newPlacement === 'top' ? Math.max(8, rect.top - resolvedMaxHeight - 6) : rect.bottom + 6,
+        width: Math.max(rect.width, 180),
+        maxHeight: resolvedMaxHeight,
+      })
     }
 
     updateMenuMaxHeight()
@@ -163,12 +176,13 @@ export default function Select({ value, onChange, onReorder, options, disabled, 
         <ChevronDownIcon className={`w-3.5 h-3.5 flex-shrink-0 text-gray-400 dark:text-gray-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </div>
 
-      {isOpen && (
+      {isOpen && menuStyle && createPortal(
         <div
-          className={`absolute z-50 w-full overflow-hidden overflow-y-auto rounded-xl border border-gray-200/60 bg-white/95 py-1 shadow-[0_8px_30px_rgb(0,0,0,0.12)] ring-1 ring-black/5 backdrop-blur-xl dark:border-white/15 dark:bg-gray-950 dark:shadow-[0_8px_30px_rgb(0,0,0,0.5)] dark:ring-white/20 custom-scrollbar ${
-            placement === 'top' ? 'bottom-full mb-1.5 animate-dropdown-up' : 'top-full mt-1.5 animate-dropdown-down'
+          ref={menuRef}
+          className={`fixed z-[120] overflow-hidden overflow-y-auto rounded-2xl border border-slate-200/80 bg-white py-1.5 shadow-[0_20px_60px_-28px_rgba(15,23,42,0.55)] ring-1 ring-black/5 dark:border-white/15 dark:bg-[#080a10] dark:shadow-[0_24px_70px_-28px_rgba(0,0,0,0.82)] dark:ring-white/10 custom-scrollbar ${
+            placement === 'top' ? 'animate-dropdown-up' : 'animate-dropdown-down'
           }`}
-          style={{ maxHeight: menuMaxHeight }}
+          style={menuStyle}
         >
           {options.map((option) => (
             <div
@@ -328,16 +342,16 @@ export default function Select({ value, onChange, onReorder, options, disabled, 
                 onChange(option.value)
                 setIsOpen(false)
               }}
-              className={`relative flex cursor-pointer items-center justify-between gap-2 px-3 py-2 text-xs transition-colors ${
+              className={`relative flex cursor-pointer items-center justify-between gap-2 px-3 py-2.5 text-sm transition-colors ${
                 draggedValue === option.value
-                  ? 'opacity-40 bg-gray-100 dark:bg-white/[0.04]'
+                  ? 'opacity-40 bg-slate-100 dark:bg-white/[0.04]'
                   : option.variant === 'action'
                   ? 'font-semibold text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-500/10'
                   : option.variant === 'danger'
                   ? 'font-semibold text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10'
                   : option.value === value
-                  ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium'
-                  : 'text-gray-700 dark:text-gray-300 select-option-premium'
+                  ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/20 dark:text-blue-300 font-semibold'
+                  : 'text-slate-700 dark:text-slate-200 select-option-premium'
               }`}
             >
               {dragOverValue === option.value && dragDropPosition === 'before' && draggedValue !== option.value && (
@@ -397,7 +411,8 @@ export default function Select({ value, onChange, onReorder, options, disabled, 
               )}
             </div>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
 
       {touchDragPreview && createPortal(
