@@ -203,6 +203,8 @@ export async function ensurePlaygroundSchema() {
   await createIndex("CREATE INDEX idx_playground_tasks_user_favorite_created ON playground_tasks(user_id, is_favorite, created_at)");
   await createIndex("CREATE INDEX idx_playground_groups_user_created ON playground_groups(user_id, created_at)");
   await createIndex("CREATE INDEX idx_playground_image_owners_user_image ON playground_image_owners(user_id, image_id)");
+  await createIndex("CREATE INDEX idx_playground_tasks_worker_pick ON playground_tasks(status, next_poll_at, locked_until)");
+  await createIndex("CREATE INDEX idx_playground_tasks_provider_task ON playground_tasks(api_provider, provider_task_id)");
 
   async function addTaskColumn(sql: string) {
     try {
@@ -246,6 +248,25 @@ export async function ensurePlaygroundSchema() {
   await addTaskColumn("raw_response_payload LONGTEXT");
   await addTaskColumn("cost DOUBLE DEFAULT NULL");
   await addTaskColumn("output_images_pending TEXT");
+    // Worker 状态机字段：用于后端任务提交、轮询、转存和恢复
+  await addTaskColumn("provider_task_id VARCHAR(255)");
+  await addTaskColumn("provider_status VARCHAR(64)");
+  await addTaskColumn("submit_status VARCHAR(64)");
+  await addTaskColumn("run_attempt INT DEFAULT 1");
+  await addTaskColumn("poll_attempts INT DEFAULT 0");
+  await addTaskColumn("manual_sync_attempts INT DEFAULT 0");
+  await addTaskColumn("last_poll_at BIGINT");
+  await addTaskColumn("next_poll_at BIGINT");
+  await addTaskColumn("submitted_at BIGINT");
+  await addTaskColumn("provider_finished_at BIGINT");
+  await addTaskColumn("external_task_expires_at BIGINT");
+  await addTaskColumn("worker_id VARCHAR(128)");
+  await addTaskColumn("locked_until BIGINT");
+  await addTaskColumn("last_provider_payload LONGTEXT");
+  await addTaskColumn("last_provider_error TEXT");
+  await addTaskColumn("idempotency_key VARCHAR(255)");
+  await addTaskColumn("provider_result_raw LONGTEXT");
+  await addTaskColumn("copied_from_task_id VARCHAR(128)");
   await dropTaskColumn("quota_date");
   await dropTaskColumn("quota_reserved_cost");
   await dropTaskColumn("quota_settled");

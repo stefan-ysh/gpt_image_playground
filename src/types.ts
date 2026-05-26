@@ -133,12 +133,30 @@ export interface InputImage {
 
 // ===== 任务记录 =====
 
-export type TaskStatus = 'running' | 'done' | 'error'
+export type LegacyTaskStatus = 'running' | 'error'
+
+export type WorkerTaskStatus =
+  | 'created'
+  | 'queued'
+  | 'submitting'
+  | 'submitted'
+  | 'polling'
+  | 'polling_retryable'
+  | 'succeeded_raw'
+  | 'storing_images'
+  | 'transfer_pending'
+  | 'done'
+  | 'provider_failed'
+  | 'submit_unknown'
+  | 'cancelled'
+
+export type TaskStatus = LegacyTaskStatus | WorkerTaskStatus
 
 export interface TaskRecord {
   id: string
   prompt: string
   params: TaskParams
+
   /** 生成时使用的 Provider 类型 */
   apiProvider?: ApiProvider
   /** 生成时使用的 API 配置 ID */
@@ -153,6 +171,7 @@ export interface TaskRecord {
   apiProfileSnapshot?: ApiProfile
   /** 生成时使用的自定义服务商配置快照 */
   customProviderSnapshot?: CustomProviderDefinition
+
   /** fal.ai 队列请求 ID，用于连接断开后的结果恢复 */
   falRequestId?: string
   /** fal.ai 队列 endpoint，用于连接断开后的状态和结果查询 */
@@ -163,16 +182,39 @@ export interface TaskRecord {
   customTaskId?: string
   /** 自定义异步任务是否等待自动恢复 */
   customRecoverable?: boolean
+
+  /** Worker / Provider 状态字段 */
+  providerTaskId?: string | null
+  providerStatus?: string | null
+  submitStatus?: string | null
+  runAttempt?: number
+  pollAttempts?: number
+  manualSyncAttempts?: number
+  lastPollAt?: number | null
+  nextPollAt?: number | null
+  submittedAt?: number | null
+  providerFinishedAt?: number | null
+  externalTaskExpiresAt?: number | null
+  workerId?: string | null
+  lockedUntil?: number | null
+  lastProviderPayload?: string | null
+  lastProviderError?: string | null
+  idempotencyKey?: string | null
+  providerResultRaw?: string | null
+  copiedFromTaskId?: string | null
+
   /** API 返回的实际生效参数，用于标记与请求值不一致的情况 */
-  actualParams?: Partial<TaskParams>
+  actualParams?: Partial<TaskParams> & Record<string, unknown>
   /** 输出图片对应的实际生效参数，key 为 outputImages 中的图片 id */
   actualParamsByImage?: Record<string, Partial<TaskParams>>
   /** 输出图片对应的 API 改写提示词，key 为 outputImages 中的图片 id */
   revisedPromptByImage?: Record<string, string>
+
   /** 输入图片的 image store id 列表 */
   inputImageIds: string[]
   maskTargetImageId?: string | null
   maskImageId?: string | null
+
   /** 输出图片的 image store id 列表 */
   outputImages: string[]
   /** 已生成但尚未成功转存到自有存储的临时图片 URL */
@@ -183,6 +225,7 @@ export interface TaskRecord {
   rawImageUrls?: string[]
   /** 发生解析错误时的原始响应 JSON */
   rawResponsePayload?: string
+
   status: TaskStatus
   error: string | null
   createdAt: number
@@ -206,8 +249,8 @@ export interface StoredImage {
   dataUrl: string
   /** 图片首次存储时间（ms） */
   createdAt?: number
-  /** 图片来源：用户上传 / API 生成 / 遮罩 */
-  source?: 'upload' | 'generated' | 'mask'
+  /** 图片来源：用户上传 / API 生成 / 遮罩 / 参考图 */
+  source?: 'upload' | 'generated' | 'mask' | 'reference'
   /** 原图宽度 */
   width?: number
   /** 原图高度 */
@@ -267,13 +310,9 @@ export interface ResponsesOutputItem {
   type?: string
   status?: string
   action?: string | Record<string, unknown>
-  /** function_call: unique call id for sending back function_call_output */
   call_id?: string
-  /** function_call: function name */
   name?: string
-  /** function_call: JSON-encoded arguments string */
   arguments?: string
-  /** function_call_output: JSON/text output string */
   output?: string
   annotations?: Array<{
     type?: string
@@ -293,11 +332,13 @@ export interface ResponsesOutputItem {
       title?: string
     }>
   }>
-  result?: string | {
-    b64_json?: string
-    image?: string
-    data?: string
-  }
+  result?:
+    | string
+    | {
+        b64_json?: string
+        image?: string
+        data?: string
+      }
   size?: string
   resolution?: string
   output_format?: string
