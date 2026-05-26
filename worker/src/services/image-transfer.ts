@@ -1,10 +1,11 @@
-import crypto from 'node:crypto'
 import type { DbTask } from '../db/tasks.js'
 import { updateTaskStatus } from '../db/tasks.js'
 import { notifyTaskUpdated } from './notifier.js'
 import { storeImageForTask } from './image-store.js'
+
 function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback
+
   try {
     return JSON.parse(value) as T
   } catch {
@@ -29,15 +30,41 @@ function extractImages(task: DbTask): string[] {
     })
   }
 
+  if (Array.isArray(raw.payload?.data?.result?.images)) {
+    const urls: string[] = []
+
+    for (const item of raw.payload.data.result.images) {
+      if (!item) continue
+
+      if (typeof item === 'string') {
+        urls.push(item)
+        continue
+      }
+
+      if (typeof item.url === 'string') {
+        urls.push(item.url)
+        continue
+      }
+
+      if (Array.isArray(item.url)) {
+        for (const url of item.url) {
+          if (typeof url === 'string' && url.trim()) {
+            urls.push(url)
+          }
+        }
+      }
+    }
+
+    return urls
+  }
+
   return []
 }
 
-function createRemoteImageId(url: string) {
-  return `remote-${crypto.createHash('sha256').update(url).digest('hex')}`
-}
-
 export async function processSucceededRawTask(task: DbTask) {
-  await updateTaskStatus(task.id, 'storing_images')
+  await updateTaskStatus(task.id, 'storing_images', {
+    last_provider_error: null,
+  })
   await notifyTaskUpdated(task.id, 'storing_images')
 
   try {
@@ -60,12 +87,17 @@ export async function processSucceededRawTask(task: DbTask) {
       outputImageIds.push(stored.id)
     }
 
+    const now = Date.now()
+
     await updateTaskStatus(task.id, 'done', {
       output_images: JSON.stringify(outputImageIds),
+      output_images_pending: null,
       raw_image_urls: JSON.stringify(images),
-      finished_at: Date.now(),
-      elapsed: Date.now() - Number(task.created_at),
+      raw_response_payload: task.provider_result_raw,
+      finished_at: now,
+      elapsed: now - Number(task.created_at),
       error: null,
+      last_provider_error: null,
     })
 
     await notifyTaskUpdated(task.id, 'done')

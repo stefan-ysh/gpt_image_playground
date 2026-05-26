@@ -155,10 +155,26 @@ export async function getTaskById(taskId: string) {
   return (rows as DbTask[])[0] ?? null
 }
 
+function isDirectImageValue(value: string) {
+  return (
+    value.startsWith('data:') ||
+    /^https?:\/\//i.test(value) ||
+    value.startsWith('/api/files/cos/') ||
+    value.startsWith('uploads/')
+  )
+}
+
 export async function getImageDataUrlsByIds(imageIds: string[]) {
   if (imageIds.length === 0) return []
 
-  const placeholders = imageIds.map(() => '?').join(',')
+  const directValues = imageIds.filter(isDirectImageValue)
+  const dbIds = imageIds.filter((id) => !isDirectImageValue(id))
+
+  if (dbIds.length === 0) {
+    return directValues
+  }
+
+  const placeholders = dbIds.map(() => '?').join(',')
 
   const [rows] = await pool.query(
     `
@@ -166,7 +182,7 @@ export async function getImageDataUrlsByIds(imageIds: string[]) {
     FROM playground_images
     WHERE id IN (${placeholders})
     `,
-    imageIds,
+    dbIds,
   )
 
   const map = new Map(
@@ -176,9 +192,11 @@ export async function getImageDataUrlsByIds(imageIds: string[]) {
     ]),
   )
 
-  return imageIds
+  const resolvedDbUrls = dbIds
     .map((id) => map.get(id))
     .filter((url): url is string => {
       return typeof url === 'string' && url.trim().length > 0
     })
+
+  return [...directValues, ...resolvedDbUrls]
 }
