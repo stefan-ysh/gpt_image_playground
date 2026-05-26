@@ -14,6 +14,7 @@ export default function RootLayout({
   return (
     <html lang="zh" suppressHydrationWarning>
       <head>
+        <link rel="image studio icon" href="./favicon.ico"></link>
         <style
           dangerouslySetInnerHTML={{
             __html: `
