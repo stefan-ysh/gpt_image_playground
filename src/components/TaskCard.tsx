@@ -585,7 +585,8 @@ export default function TaskCard({
               )}
             </>
           )}
-          {task.status === 'done' && (!thumbSrc || thumbSrcFailed) && (
+          {/* 暂时注释，误删，或许日后重启 */}
+          {/* {task.status === 'done' && (!thumbSrc || thumbSrcFailed) && (
             <svg
               className="w-8 h-8 text-gray-300"
               fill="none"
@@ -599,7 +600,7 @@ export default function TaskCard({
                 d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
               />
             </svg>
-          )}
+          )} */}
           {/* 运行中显示耗时，完成后显示封面图比例与分辨率标签 */}
           <div className="absolute top-1.5 left-1.5 flex items-center gap-1">
             {showRunningTimer || task.status !== 'done' || !coverRatio || !coverSize ? (
