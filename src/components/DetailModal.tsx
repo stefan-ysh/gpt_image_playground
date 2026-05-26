@@ -3,14 +3,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
 import { useTooltip } from '../hooks/useTooltip'
-import { createMaskPreviewDataUrl } from '../lib/canvasImage'
 import { copyImageSourceToClipboard, copyTextToClipboard, getClipboardFailureMessage } from '../lib/clipboard'
 import { downloadImageIds } from '../lib/downloadImages'
-import { ActualValueBadge, DetailParamValue } from '../lib/paramDisplay'
+import { ActualValueBadge, DetailParamValue, DetailResolutionValue } from '../lib/paramDisplay'
 import { formatImageRatio } from '../lib/size'
 import { dismissAllTooltips } from '../lib/tooltipDismiss'
-import { editOutputs, ensureImageCached, getCachedImage, getCodexCliPromptKey, removeTask, retryTask, reuseConfig, showCodexCliPrompt, updateTaskInStore, useStore } from '../store'
+import { editOutputs, ensureImageCached, getCachedImage, removeTask, retryTask, retryTaskImageTransfers, reuseConfig, updateTaskInStore, useStore } from '../store'
 import { CloseIcon, CodeIcon, CopyIcon, DownloadIcon, EditIcon, LinkIcon, TrashIcon } from './icons'
+import SmoothImage from './ui/SmoothImage'
 import ViewportTooltip from './ViewportTooltip'
 
 export default function DetailModal() {
@@ -22,7 +22,6 @@ export default function DetailModal() {
   const setConfirmDialog = useStore((s) => s.setConfirmDialog)
   const showToast = useStore((s) => s.showToast)
   const settings = useStore((s) => s.settings)
-  const dismissedCodexCliPrompts = useStore((s) => s.dismissedCodexCliPrompts)
   const streamPreviewSrc = useStore((s) => detailTaskId ? s.streamPreviews[detailTaskId] || '' : '')
   const streamPreviewSlots = useStore((s) => detailTaskId ? s.streamPreviewSlots[detailTaskId] : undefined)
 
@@ -31,12 +30,14 @@ export default function DetailModal() {
   const [outputPreviewSrcs, setOutputPreviewSrcs] = useState<Record<string, string>>({})
   const [imageRatios, setImageRatios] = useState<Record<string, string>>({})
   const [imageSizes, setImageSizes] = useState<Record<string, string>>({})
-  const [maskPreviewSrc, setMaskPreviewSrc] = useState('')
   const [now, setNow] = useState(Date.now())
   const [showRawUrlsModal, setShowRawUrlsModal] = useState(false)
   const [showRawResponseModal, setShowRawResponseModal] = useState(false)
+  const [isTransferringImages, setIsTransferringImages] = useState(false)
   const [streamPreviewLoaded, setStreamPreviewLoaded] = useState(false)
+  const [mainImageLoaded, setMainImageLoaded] = useState(false)
   const modalRef = useRef<HTMLDivElement>(null)
+  const mainImageRef = useRef<HTMLImageElement>(null)
   const rawUrlsModalRef = useRef<HTMLDivElement>(null)
   const rawResponseModalRef = useRef<HTMLDivElement>(null)
 
@@ -47,6 +48,7 @@ export default function DetailModal() {
   const copyRawUrlsTooltip = useTooltip()
   const viewRawResponseTooltip = useTooltip()
   const downloadPartialImagesTooltip = useTooltip()
+  const transferImagesTooltip = useTooltip()
   const retryTooltip = useTooltip()
   const downloadImageTooltip = useTooltip()
   const downloadAllTooltip = useTooltip()
@@ -141,10 +143,30 @@ export default function DetailModal() {
 
   const currentOutputImageId = task?.outputImages?.[imageIndex] || ''
   const currentOutputPreviewSrc = currentOutputImageId ? outputPreviewSrcs[currentOutputImageId] || '' : ''
-  const maskTargetId = task?.maskTargetImageId || null
-  const maskTargetSrc = maskTargetId ? imageSrcs[maskTargetId] || '' : ''
-  const maskSrc = task?.maskImageId ? imageSrcs[task.maskImageId] || '' : ''
+
   const allInputImageIds = task?.inputImageIds ?? []
+
+  useEffect(() => {
+    setMainImageLoaded(false)
+  }, [currentOutputPreviewSrc])
+
+  useEffect(() => {
+    const image = mainImageRef.current
+    if (!currentOutputPreviewSrc || !image) return
+    if (image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
+      setMainImageLoaded(true)
+      if (currentOutputImageId) {
+        setImageRatios((prev) => ({
+          ...prev,
+          [currentOutputImageId]: formatImageRatio(image.naturalWidth, image.naturalHeight),
+        }))
+        setImageSizes((prev) => ({
+          ...prev,
+          [currentOutputImageId]: `${image.naturalWidth}×${image.naturalHeight}`,
+        }))
+      }
+    }
+  }, [currentOutputImageId, currentOutputPreviewSrc])
 
   useEffect(() => {
     const outputImageIds = task?.outputImages ?? []
@@ -176,23 +198,7 @@ export default function DetailModal() {
     }
   }, [task?.outputImages])
 
-  useEffect(() => {
-    let cancelled = false
-    setMaskPreviewSrc('')
-    if (!maskTargetSrc || !maskSrc) return
 
-    createMaskPreviewDataUrl(maskTargetSrc, maskSrc)
-      .then((url) => {
-        if (!cancelled) setMaskPreviewSrc(url)
-      })
-      .catch(() => {
-        if (!cancelled) setMaskPreviewSrc('')
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [maskTargetSrc, maskSrc])
 
   if (!task) return null
 
@@ -204,18 +210,16 @@ export default function DetailModal() {
   const currentActualParams = currentOutputImageId ? task.actualParamsByImage?.[currentOutputImageId] : undefined
   const currentRevisedPrompt = currentOutputImageId ? task.revisedPromptByImage?.[currentOutputImageId]?.trim() : ''
   const showRevisedPrompt = Boolean(currentRevisedPrompt && currentRevisedPrompt !== task.prompt.trim())
-  const codexCliPromptKey = getCodexCliPromptKey(settings)
-  const hasHandledPromptWarning = settings.codexCli || dismissedCodexCliPrompts.includes(codexCliPromptKey)
-  const taskProvider = task.apiProvider
-  const isOpenAiTask = (taskProvider ?? 'openai') === 'openai'
-  const showPromptWarning = Boolean(isOpenAiTask && task.apiMode === 'responses' && currentOutputImageId && (!currentRevisedPrompt || showRevisedPrompt) && !hasHandledPromptWarning)
-  const taskProviderName = taskProvider === 'fal' ? 'fal.ai' : taskProvider ? 'OpenAI' : '未知'
-  const taskProfileName = task.apiProfileName || '未知'
-  const taskModel = task.apiModel || '未知'
-  const showSourceInfo = Boolean(task.apiProvider || task.apiProfileName || task.apiModel)
+  const showPromptWarning = false
+  const taskModel = task.apiModel || task.apiProfileSnapshot?.model || ''
   const isFalReconnecting = task.status === 'error' && task.falRecoverable
   const isCustomReconnecting = task.status === 'error' && task.customRecoverable
   const rawImageUrls = task.rawImageUrls ?? []
+  const hasTransferableRemoteImages = [
+    ...(task.outputImages ?? []),
+    ...(task.outputImagesPending ?? []),
+    ...(task.rawImageUrls ?? []),
+  ].some((id) => /^https?:\/\//i.test(id))
   const streamPreviewLen = streamPreviewItems.length
   const currentStreamPreviewSrc = activeStreamPreviewSrc
   const streamPartialImageIds = task.streamPartialImageIds ?? []
@@ -289,12 +293,7 @@ export default function DetailModal() {
     }
   }
 
-  const handleShowPromptWarning = () => {
-    showCodexCliPrompt(
-      true,
-      currentRevisedPrompt ? '接口返回的提示词已被改写' : '接口没有返回官方 API 会返回的部分信息',
-    )
-  }
+  const handleShowPromptWarning = () => {}
 
   const handleCopyInputImage = async () => {
     const imgId = allInputImageIds[0]
@@ -360,6 +359,25 @@ export default function DetailModal() {
     } catch (err) {
       console.error(err)
       showToast('下载失败', 'error')
+    }
+  }
+
+  const handleRetryImageTransfer = async () => {
+    if (!task || isTransferringImages) return
+    setIsTransferringImages(true)
+    try {
+      const result = await retryTaskImageTransfers(task)
+      if (result.succeeded > 0) {
+        showToast(`已转存 ${result.succeeded} 张图片到 COS`, 'success')
+      } else if (result.attempted > 0) {
+        showToast('图片暂时转存失败，已加入后台重试', 'info')
+      } else {
+        showToast('没有可转存的临时图片', 'info')
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : '图片转存失败，已加入后台重试', 'error')
+    } finally {
+      setIsTransferringImages(false)
     }
   }
 
@@ -435,29 +453,42 @@ export default function DetailModal() {
           )}
           {task.status === 'done' && outputLen > 0 && currentOutputPreviewSrc && (
             <>
-              <img
-                src={currentOutputPreviewSrc}
-                data-image-id={currentOutputImageId}
-                className="saveable-image max-w-[calc(100%-2rem)] max-h-[calc(100%-2rem)] object-contain cursor-pointer"
-                onLoad={(e) => {
-                  const image = e.currentTarget
-                  if (currentOutputImageId && image.naturalWidth > 0 && image.naturalHeight > 0) {
-                    setImageRatios((prev) => ({
-                      ...prev,
-                      [currentOutputImageId]: formatImageRatio(image.naturalWidth, image.naturalHeight),
-                    }))
-                    setImageSizes((prev) => ({
-                      ...prev,
-                      [currentOutputImageId]: `${image.naturalWidth}×${image.naturalHeight}`,
-                    }))
+              <div className="relative flex items-center justify-center w-full h-full max-w-[calc(100%-2rem)] max-h-[calc(100%-2rem)]">
+                {/* 详情大图高品质微光闪烁骨架屏 (Shimmer Skeleton) */}
+                {!mainImageLoaded && (
+                  <div className="absolute inset-0 shimmer-skeleton z-10 rounded-lg pointer-events-none" />
+                )}
+                <img
+                  ref={mainImageRef}
+                  key={currentOutputImageId}
+                  src={currentOutputPreviewSrc}
+                  data-image-id={currentOutputImageId}
+                  className={`saveable-image max-w-full max-h-full object-contain cursor-pointer transition-all duration-500 ease-out ${
+                    mainImageLoaded
+                      ? 'opacity-100 scale-100 blur-0'
+                      : 'opacity-0 scale-[0.98] blur-xs'
+                  }`}
+                  onLoad={(e) => {
+                    setMainImageLoaded(true)
+                    const image = e.currentTarget
+                    if (currentOutputImageId && image.naturalWidth > 0 && image.naturalHeight > 0) {
+                      setImageRatios((prev) => ({
+                        ...prev,
+                        [currentOutputImageId]: formatImageRatio(image.naturalWidth, image.naturalHeight),
+                      }))
+                      setImageSizes((prev) => ({
+                        ...prev,
+                        [currentOutputImageId]: `${image.naturalWidth}×${image.naturalHeight}`,
+                      }))
+                    }
+                  }}
+                  onClick={() =>
+                    setLightboxImageId(task.outputImages[imageIndex], task.outputImages)
                   }
-                }}
-                onClick={() =>
-                  setLightboxImageId(task.outputImages[imageIndex], task.outputImages)
-                }
-                alt=""
-              />
-              <div data-selectable-text className="absolute left-4 top-[15px] flex items-center gap-1.5">
+                  alt=""
+                />
+              </div>
+              <div data-selectable-text className="absolute left-4 top-[15px] flex items-center gap-1.5 z-20">
                 {currentImageRatio && currentImageSize ? (
                   <>
                     <span className="bg-black/50 text-white text-xs px-2 py-0.5 rounded backdrop-blur-sm font-mono">
@@ -661,6 +692,26 @@ export default function DetailModal() {
                     </ViewportTooltip>
                   </div>
                 )}
+                {hasTransferableRemoteImages && (
+                  <div className="relative group">
+                    <button
+                      type="button"
+                      {...transferImagesTooltip.handlers}
+                      onClick={(e) => {
+                        transferImagesTooltip.handlers.onClick()
+                        void handleRetryImageTransfer()
+                      }}
+                      disabled={isTransferringImages}
+                      className="inline-flex items-center justify-center rounded-full border border-amber-200/80 bg-amber-50 px-3 py-1.5 text-amber-600 transition hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-400 dark:hover:bg-amber-500/20"
+                      aria-label="转存图片"
+                    >
+                      <DownloadIcon className={`h-4 w-4 ${isTransferringImages ? 'animate-spin' : ''}`} />
+                    </button>
+                    <ViewportTooltip visible={transferImagesTooltip.visible} className="whitespace-nowrap">
+                      {isTransferringImages ? '转存中' : '转存图片'}
+                    </ViewportTooltip>
+                  </div>
+                )}
                 {streamPartialImageIds.length > 0 && (
                   <div className="relative group">
                     <button
@@ -717,7 +768,7 @@ export default function DetailModal() {
           <div data-selectable-text className="flex-1">
             <div className="flex items-center gap-1.5 mb-2">
               <h3 className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-                输入内容
+                提示词 Prompt
               </h3>
               {task.prompt && (
                 <button
@@ -776,14 +827,11 @@ export default function DetailModal() {
                   <>
                     <div className="flex gap-2 flex-wrap">
                       {allInputImageIds.map((imgId) => {
-                        const isMaskTarget = imgId === maskTargetId
-                        const displaySrc = (isMaskTarget && maskPreviewSrc) ? maskPreviewSrc : (imageSrcs[imgId] || '')
+                        const displaySrc = imageSrcs[imgId] || ''
                         return (
                           <div key={imgId} className="relative group inline-block">
                             <div
-                              className={`relative w-16 h-16 rounded-lg overflow-hidden border cursor-pointer hover:opacity-80 transition ${
-                                isMaskTarget ? 'border-blue-500 border-2 shadow-sm' : 'border-gray-200 dark:border-white/[0.08]'
-                              }`}
+                              className="relative w-16 h-16 rounded-lg overflow-hidden border cursor-pointer hover:opacity-80 transition border-gray-200 dark:border-white/[0.08]"
                               onClick={() => setLightboxImageId(imgId, allInputImageIds)}
                             >
                               {displaySrc && (
@@ -793,11 +841,6 @@ export default function DetailModal() {
                                   className="w-full h-full object-cover"
                                   alt=""
                                 />
-                              )}
-                              {isMaskTarget && (
-                                <span className="absolute left-1 top-1 rounded bg-blue-500/90 px-1.5 py-0.5 text-[8px] leading-none text-white font-bold tracking-wider backdrop-blur-sm z-10 pointer-events-none">
-                                  MASK
-                                </span>
                               )}
                             </div>
                           </div>
@@ -813,57 +856,59 @@ export default function DetailModal() {
               </div>
             )}
 
-            {/* 参数 */}
-            <h3 className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">
-              参数配置
-            </h3>
-            {showSourceInfo && (
-              <div className="mb-2 rounded-lg bg-gray-50 px-3 py-2 text-xs dark:bg-white/[0.03]">
-                <span className="text-gray-400 dark:text-gray-500">来源</span>
-                <br />
-                <span className="font-medium text-gray-700 dark:text-gray-200">{taskProviderName}</span>
-                <span className="text-gray-400 dark:text-gray-500"> · {taskProfileName} · {taskModel}</span>
+            <div className="mb-4 space-y-3">
+              {/* 模型 */}
+              <div className="flex items-center justify-between gap-3 border-b border-gray-100 py-3 text-xs dark:border-white/[0.08]">
+                <span className="text-gray-600 dark:text-gray-500">模型</span>
+                <span className="min-w-0 truncate text-right font-medium text-gray-700 dark:text-gray-200" title={taskModel || undefined}>
+                  {taskModel || '未知'}
+                </span>
               </div>
-            )}
-            <div className="grid grid-cols-2 gap-2 text-xs mb-4">
-              <div className="bg-gray-50 dark:bg-white/[0.03] rounded-lg px-3 py-2">
-                <span className="text-gray-400 dark:text-gray-500">尺寸</span>
-                <br />
-                <DetailParamValue task={task} paramKey="size" className="font-medium" actualParams={currentActualParams} />
+              {/* 分辨率 */}
+              <div className="flex items-center justify-between gap-3 border-b border-gray-100 py-3 text-xs dark:border-white/[0.08]">
+                <span className="text-gray-600 dark:text-gray-500">分辨率</span>
+                <DetailResolutionValue task={task} className="font-medium" actualParams={currentActualParams} />
               </div>
-              <div className="bg-gray-50 dark:bg-white/[0.03] rounded-lg px-3 py-2">
-                <span className="text-gray-400 dark:text-gray-500">质量</span>
-                <br />
-                <DetailParamValue task={task} paramKey="quality" className="font-medium" actualParams={currentActualParams} />
-              </div>
-              <div className="bg-gray-50 dark:bg-white/[0.03] rounded-lg px-3 py-2">
-                <span className="text-gray-400 dark:text-gray-500">格式</span>
+              {/* <div className="rounded-lg bg-gray-50 px-3 py-2 dark:bg-white/[0.03]">
+                <span className="text-gray-600 dark:text-gray-500">格式</span>
                 <br />
                 <DetailParamValue task={task} paramKey="output_format" className="font-medium" actualParams={currentActualParams} />
-              </div>
-              <div className="bg-gray-50 dark:bg-white/[0.03] rounded-lg px-3 py-2">
-                <span className="text-gray-400 dark:text-gray-500">审核</span>
-                <br />
-                <DetailParamValue task={task} paramKey="moderation" className="font-medium" actualParams={currentActualParams} />
-              </div>
-              {task.params.output_compression != null && (
-                <div className="bg-gray-50 dark:bg-white/[0.03] rounded-lg px-3 py-2">
-                  <span className="text-gray-400 dark:text-gray-500">压缩率</span>
+                </div> */}
+              {/* 数量 */}
+              {task.params.n > 1 && (
+                <div className="flex items-center justify-between gap-3 border-b border-gray-100 py-3 text-xs dark:border-white/[0.08]">
+                  <span className="text-gray-600 dark:text-gray-500">数量</span>
                   <br />
-                  <DetailParamValue task={task} paramKey="output_compression" className="font-medium" actualParams={currentActualParams} />
+                  <DetailParamValue task={task} paramKey="n" className="font-medium" actualParams={currentActualParams} />
                 </div>
               )}
-            </div>
-
-            {/* 时间 */}
-            <div className="text-xs text-gray-400 dark:text-gray-500 mb-4">
-              <span>创建于 {formatTime(task.createdAt)}</span>
-              {formatDuration() && <span> · 耗时 {formatDuration()}</span>}
+              {/* 创建时间 */}
+                <div className="flex items-center justify-between gap-3 border-b border-gray-100 py-3 text-xs dark:border-white/[0.08]">
+                  <span className="text-gray-600 dark:text-gray-500">创建时间</span>
+                  <span className="font-medium">
+                    {formatTime(task.createdAt)}
+                  </span>
+              </div>
+              {/* 耗时 */}
+                <div className="flex items-center justify-between gap-3 border-b border-gray-100 py-3 text-xs dark:border-white/[0.08]">
+                  <span className="text-gray-600 dark:text-gray-500">耗时</span>
+                  <span className="font-medium">
+                    {formatDuration()}
+                  </span>
+                </div>
+              {/* 费用 */}
+                <div className="flex items-center justify-between gap-3 border-b border-gray-100 py-3 text-xs dark:border-white/[0.08]">
+                  <span className="text-gray-600 dark:text-gray-500">费用</span>
+                  <span className="font-medium">
+                    {task.cost != null ? `$${task.cost.toFixed(5)}` : '未知'}
+                  </span>
+                </div>
+              {/* </div> */}
             </div>
           </div>
 
           {/* 操作按钮 */}
-          <div className="grid grid-cols-4 sm:flex gap-2 pt-4 border-t border-gray-100 dark:border-white/[0.08]">
+          <div className="grid grid-cols-4 sm:flex gap-2 pt-4 border-none border-gray-100 dark:border-white/[0.08]">
             <button
               onClick={handleReuse}
               className="col-span-2 sm:flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-500/20 transition text-sm font-medium whitespace-nowrap"

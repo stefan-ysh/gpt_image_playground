@@ -13,6 +13,10 @@ export default function TaskGrid() {
   const selectedTaskIds = useStore((s) => s.selectedTaskIds)
   const setSelectedTaskIds = useStore((s) => s.setSelectedTaskIds)
   const clearSelection = useStore((s) => s.clearSelection)
+  const tasksCurrentPage = useStore((s) => s.tasksCurrentPage)
+  const tasksHasMore = useStore((s) => s.tasksHasMore)
+  const tasksLoading = useStore((s) => s.tasksLoading)
+  const loadMoreTasks = useStore((s) => s.loadMoreTasks)
   const rootRef = useRef<HTMLDivElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const [selectionBox, setSelectionBox] = useState<{ startPageX: number; startPageY: number; currentPageX: number; currentPageY: number } | null>(null)
@@ -35,8 +39,7 @@ export default function TaskGrid() {
   const groups = settings.groups ?? []
 
   const currentGroupName = useMemo(() => {
-    if (selectedGroupId === 'all') return '全部'
-    if (selectedGroupId === 'uncategorized') return '未分类'
+    if (selectedGroupId === 'unassigned') return '未分类'
     const found = groups.find((g) => g.id === selectedGroupId)
     return found ? found.name : '未分类'
   }, [selectedGroupId, groups])
@@ -44,21 +47,10 @@ export default function TaskGrid() {
   const [assigningTask, setAssigningTask] = useState<typeof tasks[0] | null>(null)
 
   const filteredTasks = useMemo(() => {
-    const currentFingerprint = getCurrentFingerprint(settings)
     const sorted = [...tasks].sort((a, b) => b.createdAt - a.createdAt)
     const q = searchQuery.trim().toLowerCase()
     
     return sorted.filter((t) => {
-      // 隔离：只看当前 API Key 指纹匹配的任务
-      if (t.ownerFingerprint !== currentFingerprint) return false
-
-      // 分组过滤
-      if (selectedGroupId === 'uncategorized') {
-        if (t.groupId) return false
-      } else if (selectedGroupId !== 'all') {
-        if (t.groupId !== selectedGroupId) return false
-      }
-
       if (filterFavorite && !t.isFavorite) return false
       const matchStatus = filterStatus === 'all' || t.status === filterStatus
       if (!matchStatus) return false
@@ -68,7 +60,7 @@ export default function TaskGrid() {
       const paramStr = JSON.stringify(t.params).toLowerCase()
       return prompt.includes(q) || paramStr.includes(q)
     })
-  }, [tasks, searchQuery, filterStatus, filterFavorite, settings, selectedGroupId])
+  }, [tasks, searchQuery, filterStatus, filterFavorite])
 
   const handleDelete = (task: typeof tasks[0]) => {
     setConfirmDialog({
@@ -291,6 +283,28 @@ export default function TaskGrid() {
     }
   }, [clearSelection, isMac])
 
+  const sentinelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!tasksHasMore || tasksLoading) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          void loadMoreTasks(selectedGroupId, tasksCurrentPage + 1, true)
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    const el = sentinelRef.current
+    if (el) observer.observe(el)
+
+    return () => {
+      if (el) observer.unobserve(el)
+    }
+  }, [tasksHasMore, tasksLoading, tasksCurrentPage, selectedGroupId, loadMoreTasks])
+
   return (
     <div 
       ref={rootRef}
@@ -357,6 +371,19 @@ export default function TaskGrid() {
           ))}
         </div>
       )}
+
+      {/* 哨兵节点用于无限滚动加载更多 */}
+      <div ref={sentinelRef} className="h-14 flex items-center justify-center text-xs text-gray-400 dark:text-gray-500 pb-10" data-no-drag-select>
+        {tasksLoading && (
+          <div className="flex items-center gap-2 py-2">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600 dark:border-gray-600 dark:border-t-blue-400" />
+            <span>正在加载画廊图片...</span>
+          </div>
+        )}
+        {!tasksLoading && tasksHasMore && <span className="opacity-60">向下滚动加载更多</span>}
+        {!tasksLoading && !tasksHasMore && tasks.length > 0 && <span className="opacity-60">已显示该分类下的全部图片</span>}
+      </div>
+
       {selectionBox && (() => {
         const scrollContainer = rootRef.current?.closest('[data-drag-select-surface]')
         const scrollX = scrollContainer?.scrollLeft ?? 0

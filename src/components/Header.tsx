@@ -4,10 +4,14 @@ import { useTooltip } from '../hooks/useTooltip'
 import { dismissAllTooltips } from '../lib/tooltipDismiss'
 import { useStore } from '../store'
 import HelpModal from './HelpModal'
-import { HelpCircleIcon, SettingsIcon } from './icons'
+import { HelpCircleIcon, PhotoIcon } from './icons'
 import ViewportTooltip from './ViewportTooltip'
 
-export default function Header() {
+interface HeaderProps {
+  onOpenShowcase?: () => void
+}
+
+export default function Header({ onOpenShowcase }: HeaderProps) {
   const setShowSettings = useStore((s) => s.setShowSettings)
   const setConfirmDialog = useStore((s) => s.setConfirmDialog)
   const settings = useStore((s) => s.settings)
@@ -31,6 +35,7 @@ export default function Header() {
 
 
   const helpTooltip = useTooltip()
+  const showcaseTooltip = useTooltip()
 
   return (
     <>
@@ -49,6 +54,25 @@ export default function Header() {
             </button>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            <div
+              className="relative"
+              {...showcaseTooltip.handlers}
+            >
+              <button
+                onClick={() => {
+                  dismissAllTooltips()
+                  onOpenShowcase?.()
+                }}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
+                aria-label="提示词展示库"
+              >
+                <PhotoIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              </button>
+              <ViewportTooltip visible={showcaseTooltip.visible} className="whitespace-nowrap">
+                提示词展示库
+              </ViewportTooltip>
+            </div>
+
             <div
               className="relative"
               {...themeTooltip.handlers}

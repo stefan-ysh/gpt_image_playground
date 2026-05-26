@@ -2,9 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { ensureImageCached, useStore } from '../store'
-import { canvasToBlob, loadImage } from '../lib/canvasImage'
+import { canvasToBlob, loadImage, prepareMaskTargetDataUrl } from '../lib/canvasImage'
 import { storeImage } from '../lib/db'
-import { prepareMaskTargetDataUrl, replaceMaskTargetImage } from '../lib/maskPreprocess'
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
 import {
@@ -103,9 +102,6 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 export default function MaskEditorModal() {
   const imageId = useStore((s) => s.maskEditorImageId)
   const setMaskEditorImageId = useStore((s) => s.setMaskEditorImageId)
-  const maskDraft = useStore((s) => s.maskDraft)
-  const setMaskDraft = useStore((s) => s.setMaskDraft)
-  const clearMaskDraft = useStore((s) => s.clearMaskDraft)
   const setConfirmDialog = useStore((s) => s.setConfirmDialog)
   const showToast = useStore((s) => s.showToast)
 
@@ -182,18 +178,6 @@ export default function MaskEditorModal() {
     }, 450)
   }
 
-  const handleRemoveMask = () => {
-    setConfirmDialog({
-      title: '移除遮罩',
-      message: '确定要撤销对这张图片的所有涂抹并移除遮罩吗？',
-      tone: 'danger',
-      action: () => {
-        clearMaskDraft()
-        setMaskEditorImageId(null)
-        showToast('已移除遮罩', 'success')
-      },
-    })
-  }
 
   function commitViewTransform(nextTransform: ViewTransform) {
     const frame = baseFrameRef.current
@@ -286,10 +270,7 @@ export default function MaskEditorModal() {
     previewFrameRef.current = null
     previewCtx.save()
     previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height)
-    previewCtx.globalCompositeOperation = 'source-over'
-    previewCtx.fillStyle = 'rgba(59, 130, 246, 0.58)'
-    previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height)
-    previewCtx.globalCompositeOperation = 'destination-out'
+    previewCtx.globalAlpha = 0.58
     previewCtx.drawImage(maskCanvas, 0, 0)
     previewCtx.restore()
   }
@@ -401,8 +382,8 @@ export default function MaskEditorModal() {
     if (!canvas || !ctx) return
 
     ctx.save()
-    ctx.globalCompositeOperation = nextTool === 'brush' ? 'destination-out' : 'source-over'
-    ctx.fillStyle = '#fff'
+    ctx.globalCompositeOperation = nextTool === 'brush' ? 'source-over' : 'destination-out'
+    ctx.fillStyle = '#3b82f6'
     ctx.beginPath()
     ctx.arc(point.x, point.y, brushSize / 2, 0, Math.PI * 2)
     ctx.fill()
@@ -416,8 +397,8 @@ export default function MaskEditorModal() {
     if (!canvas || !ctx) return
 
     ctx.save()
-    ctx.globalCompositeOperation = nextTool === 'brush' ? 'destination-out' : 'source-over'
-    ctx.strokeStyle = '#fff'
+    ctx.globalCompositeOperation = nextTool === 'brush' ? 'source-over' : 'destination-out'
+    ctx.strokeStyle = '#3b82f6'
     ctx.lineWidth = brushSize
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
@@ -506,20 +487,9 @@ export default function MaskEditorModal() {
         imageCtx.clearRect(0, 0, imageCanvas.width, imageCanvas.height)
         imageCtx.drawImage(image, 0, 0)
 
-        fillWhiteMask(maskCanvas)
-
-        if (maskDraft?.targetImageId === targetImageId) {
-          try {
-            const draftImage = await loadImage(maskDraft.maskDataUrl)
-            if (cancelled) return
-            drawMaskImageToCanvas(draftImage, maskCanvas)
-          } catch (err) {
-            fillWhiteMask(maskCanvas)
-            showToast(
-              `遮罩草稿加载失败，已重置为空白遮罩：${err instanceof Error ? err.message : String(err)}`,
-              'error',
-            )
-          }
+        const maskCtx = maskCanvas.getContext('2d')
+        if (maskCtx) {
+          maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height)
         }
 
         renderPreview()
@@ -557,7 +527,7 @@ export default function MaskEditorModal() {
       panGestureRef.current = null
       setIsPanning(false)
     }
-  }, [imageId, maskDraft, setMaskEditorImageId, showToast])
+  }, [imageId, setMaskEditorImageId, showToast])
 
   useEffect(() => {
     if (isAltKeyPressed) {
@@ -776,43 +746,57 @@ export default function MaskEditorModal() {
     if (!canvas || !isReady || isSaving) return
 
     pushUndoSnapshot()
-    fillWhiteMask(canvas)
+    const maskCtx = canvas.getContext('2d')
+    if (maskCtx) maskCtx.clearRect(0, 0, canvas.width, canvas.height)
     renderPreview()
   }
 
   const handleSave = async () => {
     const canvas = maskCanvasRef.current
     const savingSessionId = activeSessionIdRef.current
-    if (!canvas || !sourceDataUrl || !imageId || !isReady || isSaving || !savingSessionId) return
+    const imageCanvas = imageCanvasRef.current
+    if (!canvas || !imageCanvas || !sourceDataUrl || !imageId || !isReady || isSaving || !savingSessionId) return
 
     const token = ++saveTokenRef.current
     const savingImageId = imageId
     try {
       setIsSaving(true)
-      const blob = await canvasToBlob(canvas, 'image/png')
-      const maskDataUrl = await blobToDataUrl(blob)
-      const workingTargetId = await storeImage(sourceDataUrl, 'upload')
+
+      // 在内存中把 imageCanvas 和 maskCanvas 融合成单张带 0.58 半透明蓝色的图片
+      const fusionCanvas = document.createElement('canvas')
+      fusionCanvas.width = imageCanvas.width
+      fusionCanvas.height = imageCanvas.height
+      const fusionCtx = fusionCanvas.getContext('2d')
+      if (!fusionCtx) throw new Error('当前浏览器不支持 Canvas')
+
+      // 1. 绘制原图
+      fusionCtx.drawImage(imageCanvas, 0, 0)
+      // 2. 以 0.58 透明度叠加纯蓝色涂鸦标记
+      fusionCtx.globalAlpha = 0.58
+      fusionCtx.drawImage(canvas, 0, 0)
+
+      // 3. 导出 PNG Blob 与 dataUrl
+      const blob = await canvasToBlob(fusionCanvas, 'image/png')
+      const combinedDataUrl = await blobToDataUrl(blob)
+
       if (
         saveTokenRef.current !== token ||
         activeSessionIdRef.current !== savingSessionId ||
         useStore.getState().maskEditorImageId !== savingImageId
       ) return
 
+      // 4. 更新替换输入栏对应的卡片 dataUrl 并分配新的本地 temp- 临时 ID
       const latestStore = useStore.getState()
+      const newId = `temp-${Date.now().toString(36)}${Math.random().toString(36).substring(2, 7)}`
+
       latestStore.setInputImages(
-        replaceMaskTargetImage(latestStore.inputImages, savingImageId, {
-          id: workingTargetId,
-          dataUrl: sourceDataUrl,
-        }),
-        { equivalentImageIds: { [savingImageId]: workingTargetId } },
+        latestStore.inputImages.map((img) =>
+          img.id === savingImageId ? { id: newId, dataUrl: combinedDataUrl, editSource: 'mask' } : img
+        )
       )
-      setMaskDraft({
-        targetImageId: workingTargetId,
-        maskDataUrl,
-        updatedAt: Date.now(),
-      })
+
       setMaskEditorImageId(null)
-      showToast('遮罩已保存', 'success')
+      showToast('图片修改已保存', 'success')
     } catch (err) {
       if (
         saveTokenRef.current !== token ||
@@ -876,11 +860,7 @@ export default function MaskEditorModal() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {maskDraft?.targetImageId === imageId && (
-            <button onClick={handleRemoveMask} className="flex h-8 items-center gap-1.5 px-4 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition">
-              移除遮罩
-            </button>
-          )}
+
           <button onClick={handleSave} disabled={!isReady || isSaving} className="flex h-8 items-center gap-1.5 px-4 text-sm font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-lg disabled:opacity-50 transition">
             {isSaving ? '保存中...' : '保存'}
           </button>

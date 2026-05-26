@@ -2,7 +2,6 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useStore, getCachedImage, ensureImageCached } from '../store'
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
 import { usePreventBackgroundScroll } from '../hooks/usePreventBackgroundScroll'
-import { createMaskPreviewDataUrl } from '../lib/canvasImage'
 import { suppressGlobalClicks } from '../lib/clickSuppression'
 
 const MIN_SCALE = 1
@@ -22,12 +21,8 @@ export default function Lightbox() {
   const lightboxImageId = useStore((s) => s.lightboxImageId)
   const lightboxImageList = useStore((s) => s.lightboxImageList)
   const setLightboxImageId = useStore((s) => s.setLightboxImageId)
-  const maskDraft = useStore((s) => s.maskDraft)
-  const tasks = useStore((s) => s.tasks)
 
   const [src, setSrc] = useState('')
-  const [maskImageSrc, setMaskImageSrc] = useState('')
-  const [maskPreviewSrc, setMaskPreviewSrc] = useState('')
 
   const close = useCallback(() => setLightboxImageId(null), [setLightboxImageId])
   useCloseOnEscape(Boolean(lightboxImageId), close)
@@ -58,63 +53,6 @@ export default function Lightbox() {
       cancelled = true
     }
   }, [lightboxImageId])
-
-  // 遮罩图加载
-  useEffect(() => {
-    let cancelled = false
-
-    if (!lightboxImageId) {
-      setMaskImageSrc('')
-      return
-    }
-
-    if (maskDraft?.targetImageId === lightboxImageId) {
-      setMaskImageSrc(maskDraft.maskDataUrl)
-      return
-    }
-
-    setMaskImageSrc('')
-
-    const taskWithMask = tasks.find((t) => t.maskTargetImageId === lightboxImageId && t.maskImageId)
-    if (taskWithMask?.maskImageId) {
-      const maskImageId = taskWithMask.maskImageId
-      const cached = getCachedImage(maskImageId)
-      if (cached) {
-        setMaskImageSrc(cached)
-      } else {
-        ensureImageCached(maskImageId).then((url) => {
-          if (!cancelled && url) setMaskImageSrc(url)
-        })
-      }
-    } else {
-      setMaskImageSrc('')
-    }
-
-    return () => {
-      cancelled = true
-    }
-  }, [lightboxImageId, maskDraft?.targetImageId, maskDraft?.maskDataUrl, tasks])
-
-  // 生成遮罩预览
-  useEffect(() => {
-    let cancelled = false
-    if (!src || !maskImageSrc) {
-      setMaskPreviewSrc('')
-      return
-    }
-
-    createMaskPreviewDataUrl(src, maskImageSrc)
-      .then((url) => {
-        if (!cancelled) setMaskPreviewSrc(url)
-      })
-      .catch(() => {
-        if (!cancelled) setMaskPreviewSrc('')
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [src, maskImageSrc])
 
   // 导航
   const currentIndex = lightboxImageId ? lightboxImageList.indexOf(lightboxImageId) : -1
@@ -147,7 +85,6 @@ export default function Lightbox() {
     <LightboxInner
       src={src}
       imageId={lightboxImageId}
-      maskPreviewSrc={maskPreviewSrc}
       onClose={close}
       showNav={showNav}
       currentIndex={currentIndex}
@@ -161,7 +98,6 @@ export default function Lightbox() {
 interface LightboxInnerProps {
   src: string
   imageId: string
-  maskPreviewSrc?: string
   onClose: () => void
   showNav: boolean
   currentIndex: number
@@ -171,7 +107,7 @@ interface LightboxInnerProps {
 }
 
 /** 内部组件：保证挂载时 DOM 已经存在，所有 ref / effect 都可靠 */
-function LightboxInner({ src, imageId, maskPreviewSrc, onClose, showNav, currentIndex, total, onPrev, onNext }: LightboxInnerProps) {
+function LightboxInner({ src, imageId, onClose, showNav, currentIndex, total, onPrev, onNext }: LightboxInnerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const openedAtRef = useRef(Date.now())
 
@@ -630,13 +566,7 @@ function LightboxInner({ src, imageId, maskPreviewSrc, onClose, showNav, current
             onDragStart={(e) => e.preventDefault()}
             alt=""
           />
-          {maskPreviewSrc && (
-            <img
-              src={maskPreviewSrc}
-              className="absolute inset-0 w-full h-full object-contain rounded-lg pointer-events-none"
-              alt=""
-            />
-          )}
+
         </div>
       </div>
 
