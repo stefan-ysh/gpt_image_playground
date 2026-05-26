@@ -3,6 +3,15 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import type {
   StateStorage,
 } from 'zustand/middleware'
+import {
+  createGenerationTask,
+  getGenerationTask,
+  syncGenerationTask,
+} from './lib/generationTasks'
+import {
+  isTaskRunning,
+  canManualSyncTask,
+} from './lib/taskStatus'
 import type {
   ApiMode,
   ApiProfile,
@@ -340,7 +349,7 @@ async function persistGeneratedImage(dataUrl: string, taskId: string): Promise<s
             if (!pending.includes(result.id)) pending.push(result.id)
             await putTask({ ...dbTask, outputImagesPending: pending })
           }
-        } catch {}
+        } catch { }
       }
 
       return result.id
@@ -622,9 +631,9 @@ export function getPersistedState(state: AppState) {
     params: state.params,
     ...(settings.persistInputOnRestart && galleryInputDraft
       ? {
-          prompt: galleryInputDraft?.prompt ?? '',
-          inputImages: galleryInputDraft?.inputImages.map((img) => ({ id: img.id, dataUrl: '' })) ?? [],
-        }
+        prompt: galleryInputDraft?.prompt ?? '',
+        inputImages: galleryInputDraft?.inputImages.map((img) => ({ id: img.id, dataUrl: '' })) ?? [],
+      }
       : {}),
     galleryInputDraft: settings.persistInputOnRestart && galleryInputDraft
       ? { ...galleryInputDraft, inputImages: galleryInputDraft.inputImages.map((img) => ({ id: img.id, dataUrl: '' })) }
@@ -653,10 +662,10 @@ function mergePersistedState(persistedState: unknown, currentState: AppState): A
     : {}
   const galleryInputDraft = settings.persistInputOnRestart
     ? normalizeInputDraft((persisted as { galleryInputDraft?: unknown }).galleryInputDraft ?? {
-        prompt: persisted.prompt,
-        inputImages: persisted.inputImages,
-        maskEditorImageId: null,
-      })
+      prompt: persisted.prompt,
+      inputImages: persisted.inputImages,
+      maskEditorImageId: null,
+    })
     : null
   return {
     ...currentState,
@@ -1119,15 +1128,15 @@ export const useStore = create<AppState>()(
           merged.profiles = merged.profiles.map((profile) =>
             profile.id === merged.activeProfileId
               ? {
-                  ...profile,
-                  baseUrl: incoming.baseUrl ?? profile.baseUrl,
-                  model: incoming.model ?? profile.model,
-                  timeout: incoming.timeout ?? profile.timeout,
-                  apiMode: incoming.apiMode === 'images' || incoming.apiMode === 'responses' ? incoming.apiMode : profile.apiMode,
-                  apiProxy: incoming.apiProxy ?? profile.apiProxy,
-                  streamImages: incoming.streamImages ?? profile.streamImages,
-                  streamPartialImages: incoming.streamPartialImages ?? profile.streamPartialImages,
-                }
+                ...profile,
+                baseUrl: incoming.baseUrl ?? profile.baseUrl,
+                model: incoming.model ?? profile.model,
+                timeout: incoming.timeout ?? profile.timeout,
+                apiMode: incoming.apiMode === 'images' || incoming.apiMode === 'responses' ? incoming.apiMode : profile.apiMode,
+                apiProxy: incoming.apiProxy ?? profile.apiProxy,
+                streamImages: incoming.streamImages ?? profile.streamImages,
+                streamPartialImages: incoming.streamPartialImages ?? profile.streamPartialImages,
+              }
               : profile,
           )
         }
@@ -1211,7 +1220,52 @@ export const useStore = create<AppState>()(
         set((s) => syncActiveInputDraft(s, { maskEditorImageId }))
       },
       galleryInputDraft: null,
+      refreshTask: async (taskId: string) => {
+        try {
+          const task = await getGenerationTask(taskId)
 
+          set((state) => {
+            const exists = state.tasks.some((item) => item.id === taskId)
+
+            return {
+              tasks: exists
+                ? state.tasks.map((item) => item.id === taskId ? task : item)
+                : [task, ...state.tasks],
+            }
+          })
+
+          return task
+        } catch (error) {
+          console.warn('刷新任务失败:', error)
+          return null
+        }
+      },
+
+      syncTask: async (taskId: string) => {
+        try {
+          const task = get().tasks.find((item) => item.id === taskId)
+
+          if (task && !canManualSyncTask(task.status)) {
+            get().showToast('当前任务状态无需同步', 'info')
+            return
+          }
+
+          const result = await syncGenerationTask(taskId)
+
+          if (result.synced) {
+            get().showToast('已通知后台检查任务', 'success')
+          } else if (result.message) {
+            get().showToast(result.message, 'info')
+          }
+
+          await get().refreshTask(taskId)
+        } catch (error) {
+          get().showToast(
+            error instanceof Error ? error.message : String(error),
+            'error',
+          )
+        }
+      },
       // Params
       params: { ...DEFAULT_PARAMS },
       setParams: (p) => set((s) => {
@@ -2010,6 +2064,9 @@ if (typeof window !== 'undefined') {
   }
 }
 
+refreshTask: (taskId: string) => Promise<TaskRecord | null>
+syncTask: (taskId: string) => Promise<void>
+
 /** 提交新任务 */
 export async function submitTask(options: { allowFullMask?: boolean; useCurrentApiProfileWhenReusedMissing?: boolean } = {}) {
   const { settings, prompt, inputImages, params, reusedTaskApiProfileId, reusedTaskApiProfileName, reusedTaskApiProfileMissing, showToast, setConfirmDialog, selectedGroupId } =
@@ -2026,12 +2083,12 @@ export async function submitTask(options: { allowFullMask?: boolean; useCurrentA
       } else {
         setConfirmDialog({
           title: '找不到 API 配置',
-      message: `找不到复用任务所使用的 API 配置「${reusedTaskApiProfileName || '未知配置'}」，要使用当前的 API 配置「${activeProfile.name}」提交任务吗？`,
-      confirmText: '使用当前配置提交',
-      cancelText: '放弃提交',
-      action: () => {
-        void submitTask({ ...options, useCurrentApiProfileWhenReusedMissing: true })
-      },
+          message: `找不到复用任务所使用的 API 配置「${reusedTaskApiProfileName || '未知配置'}」，要使用当前的 API 配置「${activeProfile.name}」提交任务吗？`,
+          confirmText: '使用当前配置提交',
+          cancelText: '放弃提交',
+          action: () => {
+            void submitTask({ ...options, useCurrentApiProfileWhenReusedMissing: true })
+          },
         })
         return
       }
@@ -2277,7 +2334,7 @@ async function executeTask(taskId: string) {
   const requestSettings = createSettingsForApiProfile(settings, activeProfile)
   const taskProvider = task.apiProvider ?? activeProfile.provider
   let falRequestInfo: { requestId: string; endpoint: string } | null = task.falRequestId && task.falEndpoint
-        ? { requestId: task.falRequestId, endpoint: task.falEndpoint }
+    ? { requestId: task.falRequestId, endpoint: task.falEndpoint }
     : null
   let customTaskInfo: { taskId: string } | null = task.customTaskId
     ? { taskId: task.customTaskId }
@@ -2364,8 +2421,8 @@ async function executeTask(taskId: string) {
     const actualParamsList = taskProvider === 'fal'
       ? await resolveImageSizeParamsList(result.images, result.actualParamsList)
       : isAsyncCustomTask
-      ? await readImageSizeParamsList(result.images)
-      : result.actualParamsList
+        ? await readImageSizeParamsList(result.images)
+        : result.actualParamsList
     const actualParams = (() => {
       if (taskProvider === 'fal') return firstActualParams(actualParamsList)
       if (isAsyncCustomTask) return firstActualParams(actualParamsList)
@@ -2747,10 +2804,12 @@ function formatExportResolution(value: unknown): string {
 type ExportImageFile = {
   path: string
   createdAt: number
-  source?: 'mask' | 'upload' | 'generated' | 'reference'
+  source?: StoredImage['source']
   width?: number
   height?: number
 }
+
+type ExportImageFiles = Record<string, ExportImageFile>
 
 function getTaskExportRows(tasks: TaskRecord[], outputFiles: ExportImageFiles, referenceFiles: ExportImageFiles) {
   const maxOutputCount = Math.max(1, ...tasks.map((task) => task.outputImages?.length ?? 0))
