@@ -11,25 +11,32 @@ export interface DbTask {
   api_mode: string | null
   api_profile_snapshot: string | null
   custom_provider_snapshot: string | null
+
   provider_task_id: string | null
+  provider_result_raw: string | null
+  provider_status: string | null
+  last_provider_payload: string | null
+  last_provider_error: string | null
+
+  input_image_ids: string | null
+  mask_target_image_id: string | null
+  mask_image_id: string | null
+
   status: TaskStatus
   output_images: string | null
+  output_images_pending: string | null
+  raw_image_urls: string | null
   raw_response_payload: string | null
+
   cost: number | null
   created_at: number
   finished_at: number | null
   elapsed: number | null
+
   poll_attempts: number
   next_poll_at: number | null
   worker_id: string | null
   locked_until: number | null
-  input_image_ids: string | null
-  mask_target_image_id: string | null
-  mask_image_id: string | null
-  provider_result_raw: string | null
-  raw_image_urls: string | null
-  last_provider_payload: string | null
-  last_provider_error: string | null
 }
 
 export async function pickRunnableTasks(limit = 5) {

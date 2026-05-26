@@ -26,6 +26,21 @@ function getCustomProviderSnapshot(task: DbTask) {
   )
 }
 
+function normalizeProviderInputImageUrl(url: string) {
+  if (url.startsWith('data:')) return url
+  if (/^https?:\/\//i.test(url)) return url
+
+  if (url.startsWith('/api/files/cos/')) {
+    const publicBase = process.env.PUBLIC_APP_ORIGIN || process.env.NEXT_PUBLIC_APP_ORIGIN
+    if (!publicBase) {
+      throw new Error('参考图是相对路径，但缺少 PUBLIC_APP_ORIGIN，无法提供给服务商访问')
+    }
+    return `${publicBase.replace(/\/+$/, '')}${url}`
+  }
+
+  return url
+}
+
 async function toProviderTaskInput(task: DbTask) {
   const params = safeJsonParse<Record<string, unknown>>(task.params, {})
   const profile = getApiProfile(task)
@@ -45,7 +60,8 @@ async function toProviderTaskInput(task: DbTask) {
         : ''
 
   const inputImageIds = safeJsonParse<string[]>(task.input_image_ids, [])
-  const inputImageUrls = await getImageDataUrlsByIds(inputImageIds)
+  const inputImageUrls = (await getImageDataUrlsByIds(inputImageIds))
+  .map(normalizeProviderInputImageUrl)
 
   return {
     id: task.id,

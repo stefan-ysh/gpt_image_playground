@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import type { DbTask } from '../db/tasks.js'
 import { updateTaskStatus } from '../db/tasks.js'
 import { notifyTaskUpdated } from './notifier.js'
-
+import { storeImageForTask } from './image-store.js'
 function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback
   try {
@@ -47,12 +47,21 @@ export async function processSucceededRawTask(task: DbTask) {
       throw new Error('Provider success result does not contain images')
     }
 
-    const outputImageIds = images.map(createRemoteImageId)
+    const outputImageIds: string[] = []
 
-    // 当前版本先把远程 URL 作为可显示图片保存。
-    // 后续再接入 COS 实际下载/上传。
+    for (const imageUrl of images) {
+      const stored = await storeImageForTask({
+        taskId: task.id,
+        userId: task.user_id,
+        dataUrl: imageUrl,
+        source: 'generated',
+      })
+
+      outputImageIds.push(stored.id)
+    }
+
     await updateTaskStatus(task.id, 'done', {
-      output_images: JSON.stringify(images),
+      output_images: JSON.stringify(outputImageIds),
       raw_image_urls: JSON.stringify(images),
       finished_at: Date.now(),
       elapsed: Date.now() - Number(task.created_at),
