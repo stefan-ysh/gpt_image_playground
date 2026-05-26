@@ -758,6 +758,10 @@ interface AppState {
   toast: { message: string; type: ToastType } | null
   showToast: (message: string, type?: ToastType) => void
 
+
+  refreshTask: (taskId: string) => Promise<TaskRecord | null>
+  syncTask: (taskId: string) => Promise<void>
+
   // Confirm dialog
   confirmDialog: {
     title: string
@@ -1224,15 +1228,14 @@ export const useStore = create<AppState>()(
         try {
           const task = await getGenerationTask(taskId)
 
-          set((state) => {
-            const exists = state.tasks.some((item) => item.id === taskId)
+          const { tasks, setTasks } = useStore.getState()
+          const exists = tasks.some((item: TaskRecord) => item.id === taskId)
 
-            return {
-              tasks: exists
-                ? state.tasks.map((item) => item.id === taskId ? task : item)
-                : [task, ...state.tasks],
-            }
-          })
+          setTasks(
+            exists
+              ? tasks.map((item: TaskRecord) => item.id === taskId ? task : item)
+              : [task, ...tasks],
+          )
 
           return task
         } catch (error) {
@@ -1243,24 +1246,24 @@ export const useStore = create<AppState>()(
 
       syncTask: async (taskId: string) => {
         try {
-          const task = get().tasks.find((item) => item.id === taskId)
+          const task = useStore.getState().tasks.find((item: TaskRecord) => item.id === taskId)
 
           if (task && !canManualSyncTask(task.status)) {
-            get().showToast('当前任务状态无需同步', 'info')
+            useStore.getState().showToast('当前任务状态无需同步', 'info')
             return
           }
 
           const result = await syncGenerationTask(taskId)
 
           if (result.synced) {
-            get().showToast('已通知后台检查任务', 'success')
+            useStore.getState().showToast('已通知后台检查任务', 'success')
           } else if (result.message) {
-            get().showToast(result.message, 'info')
+            useStore.getState().showToast(result.message, 'info')
           }
 
-          await get().refreshTask(taskId)
+          await useStore.getState().refreshTask(taskId)
         } catch (error) {
-          get().showToast(
+          useStore.getState().showToast(
             error instanceof Error ? error.message : String(error),
             'error',
           )
@@ -2063,9 +2066,6 @@ if (typeof window !== 'undefined') {
     (mediaQuery as any).addListener(handleMediaChange)
   }
 }
-
-refreshTask: (taskId: string) => Promise<TaskRecord | null>
-syncTask: (taskId: string) => Promise<void>
 
 /** 提交新任务 */
 export async function submitTask(options: { allowFullMask?: boolean; useCurrentApiProfileWhenReusedMissing?: boolean } = {}) {
