@@ -1,7 +1,11 @@
 import { useState } from 'react'
+
 import { useStore } from '../store'
 import GroupDialog from './GroupDialog'
+import { FolderIcon, PhotoIcon, PlusIcon, SettingsIcon, TagIcon } from './icons'
+import ViewportTooltip from './ViewportTooltip'
 
+import { useTooltip } from '../hooks/useTooltip'
 /**
  * ChatGPT 风格的左侧侧边栏组件，承载分组管理和过滤
  */
@@ -26,7 +30,7 @@ export default function Sidebar() {
   const [groupDialogMode, setGroupDialogMode] = useState<'create' | 'rename'>('create')
   const [editingGroupId, setEditingGroupId] = useState('')
   const [editingGroupName, setEditingGroupName] = useState('')
-
+  const settingsBtn= useTooltip()
   // 触发新建分组弹窗
   const handleCreateClick = () => {
     setGroupDialogMode('create')
@@ -67,34 +71,35 @@ export default function Sidebar() {
 
   // 未选中和已选中的样式模板 (仿 ChatGPT)
   const getMenuItemClass = (isActive: boolean) => {
-    return `w-full flex items-center justify-between gap-2.5 px-3.5 py-2.5 text-xs rounded-xl transition-all duration-200 group/item select-none cursor-pointer border ${
+    return `w-full flex items-center justify-between gap-2.5 px-3.5 py-2.5 text-xs rounded-2xl transition-all duration-200 group/item select-none cursor-pointer border ${
       isActive
-        ? 'bg-blue-50/80 text-blue-600 font-semibold border-blue-100/50 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/10 shadow-xs shadow-blue-500/5'
-        : 'text-gray-600 border-transparent hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/[0.04] dark:hover:text-white'
+        ? 'border-blue-200/60 bg-blue-50/85 font-semibold text-blue-600 shadow-[0_14px_32px_-26px_rgba(37,99,235,0.55)] dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-300'
+        : 'border-transparent text-slate-600 hover:bg-white/70 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-white/[0.045] dark:hover:text-white'
     }`
   }
 
   return (
     <>
-      {/* 移动端侧边栏弹出时的黑色半透明蒙层 */}
+      {/* 移动端侧边栏弹出时的半透明蒙层 */}
       {sidebarOpen && (
         <div 
           onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-xs lg:hidden transition-opacity animate-fade-in"
+          className="fixed inset-0 z-40 bg-slate-950/38 backdrop-blur-sm lg:hidden transition-opacity animate-fade-in"
         />
       )}
 
       {/* 侧栏主容器 */}
       <aside 
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-gray-200/70 bg-white/95 backdrop-blur-xl dark:border-white/[0.08] dark:bg-gray-950/95 transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-[17rem] flex-col border-r border-slate-200/75 bg-white/[0.86] backdrop-blur-2xl transition-transform duration-300 ease-out dark:border-white/[0.08] dark:bg-[#10141d]/[0.92] lg:static lg:translate-x-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {/* 顶部 Logo 与流光标题 */}
-        <div className="flex h-14 items-center justify-between border-b border-gray-100 px-4 dark:border-white/[0.05]">
-          <span className="flex items-center gap-2 font-bold tracking-tight text-gray-900 dark:text-gray-100">
-            <span className="text-lg">🎨</span>
-            <span className="bg-gradient-to-r from-blue-600 via-indigo-500 to-purple-600 bg-size-200 animate-shimmer-bg bg-clip-text text-sm font-extrabold text-transparent dark:from-blue-400 dark:via-indigo-300 dark:to-purple-300">
+        <div className="flex h-16 items-center justify-between border-b border-slate-200/60 px-4 dark:border-white/[0.06]">
+          <span className="flex items-center gap-2.5 font-bold tracking-tight text-gray-950 dark:text-gray-100">
+            <span className="flex h-9 w-9 items-center justify-center rounded-2xl border border-blue-200/70 bg-blue-50 text-blue-600 shadow-[0_14px_32px_-24px_rgba(37,99,235,0.55)] dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-300">
+            <img src="./logo.png" alt="Image Studio Logo" />
+            </span>
+            <span className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
               Image Studio
             </span>
           </span>
@@ -102,7 +107,7 @@ export default function Sidebar() {
           {/* 移动端收起侧栏按钮 */}
           <button
             onClick={() => setSidebarOpen(false)}
-            className="rounded-lg p-1.5 hover:bg-gray-100 dark:hover:bg-white/[0.05] lg:hidden text-gray-500"
+            className="rounded-xl p-1.5 text-gray-500 transition-all hover:bg-slate-100 active:scale-95 dark:hover:bg-white/[0.06] lg:hidden"
             aria-label="收起菜单"
           >
             <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
@@ -112,24 +117,22 @@ export default function Sidebar() {
         </div>
 
         {/* 侧栏主体滚动区 */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-4">
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-3.5 space-y-4">
           
           {/* 快捷新建分组项 */}
           <button
             onClick={handleCreateClick}
-            className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-gray-200/80 bg-white/50 backdrop-blur-xs px-3 py-2.5 text-xs font-semibold text-gray-600 transition-all duration-200 hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50/20 dark:border-white/10 dark:bg-white/[0.01] dark:text-gray-300 dark:hover:border-blue-500/30 dark:hover:text-blue-400 dark:hover:bg-blue-500/5"
+            className="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-slate-200/90 bg-white/[0.55] px-3 py-2.5 text-xs font-semibold text-slate-600 transition-all duration-200 hover:-translate-y-px hover:border-blue-300 hover:bg-blue-50/60 hover:text-blue-600 active:translate-y-0 dark:border-white/10 dark:bg-white/[0.025] dark:text-slate-300 dark:hover:border-blue-400/30 dark:hover:bg-blue-500/[0.08] dark:hover:text-blue-300"
           >
-            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
+            <PlusIcon className="h-3.5 w-3.5" />
             新建分组
           </button>
 
           {/* 分组列表菜单 */}
-          <div className="space-y-1">
-            <div className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-              画廊分类
-            </div>
+          <div className="space-y-1 h-full overflow-auto custom-scrollbar">
+            {/* <div className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+              画廊分组
+            </div> */}
             
             {/* 未分类照片 */}
             <div 
@@ -137,7 +140,7 @@ export default function Sidebar() {
               className={getMenuItemClass(selectedGroupId === 'unassigned')}
             >
               <span className="flex items-center gap-2">
-                <span className="opacity-70 text-xs">📂</span>
+                <FolderIcon className="h-3.5 w-3.5 opacity-70" />
                 <span>未分类</span>
               </span>
             </div>
@@ -152,7 +155,7 @@ export default function Sidebar() {
                   className={getMenuItemClass(isActive)}
                 >
                   <span className="flex items-center gap-2 min-w-0 flex-1">
-                    <span className="opacity-70 text-xs shrink-0">🏷️</span>
+                    <TagIcon className="h-3.5 w-3.5 shrink-0 opacity-70" />
                     <span className="truncate">{g.name}</span>
                   </span>
                   
@@ -192,33 +195,28 @@ export default function Sidebar() {
         </div>
 
         {/* 侧栏底部个人操作区 (类似 ChatGPT) */}
-        <div className="mt-auto border-t border-gray-100 p-3 dark:border-white/[0.05] bg-gray-50/40 dark:bg-white/[0.01] space-y-2">
-          <button
-            onClick={() => {
-              setSidebarOpen(false)
-              setShowSettings(true)
-            }}
-            className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/[0.04] transition-all font-semibold"
-          >
-            <svg className="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.43l-1.003.828c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.43l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.991l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            全局系统设置
-          </button>
-
+        <div className="mt-auto space-y-2 border-t border-slate-200/60 bg-slate-50/55 p-0 dark:border-white/[0.06] dark:bg-white/[0.015]">
           {currentUser && (
-            <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-gray-100/50 dark:bg-white/[0.02] border border-gray-100 dark:border-white/[0.04]">
-              <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 text-white flex items-center justify-center font-bold text-xs shrink-0 select-none shadow-sm shadow-blue-500/10">
-                {currentUser.displayName}
-              </div>
-              <div className="min-w-0 flex-1">
-                {/* <div className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate leading-none">
+            <div className="flex items-center justify-between gap-2.5 border border-none bg-white/[0.58] px-3 py-2.5 dark:border-white/[0.06] dark:bg-white/[0.025]">
+              <div className="flex-1">
+                <div className="truncate text-xs font-semibold leading-none text-slate-700 dark:text-slate-200">
                   {currentUser.displayName || '未命名用户'}
-                </div> */}
-                <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate mt-1 leading-none font-mono">
+                </div>
+                <div className="mt-1 truncate font-mono text-[10px] leading-none text-slate-400 dark:text-slate-500">
                   {currentUser.email}
                 </div>
+              </div>
+              <div {...settingsBtn.handlers}>
+                <SettingsIcon
+                  onClick={() => {
+                    setSidebarOpen(false)
+                    setShowSettings(true)
+                  }}
+                  className="h-5 w-5 cursor-pointer text-slate-500 transition-all duration-300 hover:rotate-90 hover:text-slate-700 pointer-events-auto dark:text-slate-400 dark:hover:text-slate-200"
+                />
+                <ViewportTooltip visible={settingsBtn.visible} className="whitespace-nowrap">
+                  系统设置
+                </ViewportTooltip>
               </div>
             </div>
           )}

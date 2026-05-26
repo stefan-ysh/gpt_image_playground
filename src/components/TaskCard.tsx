@@ -396,10 +396,10 @@ export default function TaskCard({
   }
 
   return (
-    <div className="relative rounded-xl">
+    <div className="relative rounded-2xl">
       {/* 侧滑底图 */}
       <div
-        className={`absolute inset-0 rounded-xl flex items-center transition-opacity duration-200 pointer-events-none ${
+        className={`absolute inset-0 rounded-2xl flex items-center transition-opacity duration-200 pointer-events-none ${
           isSwiping || swipeDirection !== 0 || swipeActionActive ? 'opacity-100' : 'opacity-0'
         } ${swipeBgClass} ${
           swipeDirection > 0 ? 'justify-start pl-6' : 'justify-end pr-6'
@@ -416,7 +416,7 @@ export default function TaskCard({
 
       <div
         ref={cardRef}
-        className={`relative bg-white dark:bg-gray-900 rounded-xl border overflow-hidden cursor-pointer touch-pan-y will-change-transform duration-300 hover:shadow-xl hover:shadow-blue-500/[0.03] dark:hover:bg-gray-900/40 dark:backdrop-blur-md ${
+        className={`relative overflow-hidden rounded-2xl border bg-white/[0.86] shadow-[0_20px_48px_-38px_rgba(15,23,42,0.42)] backdrop-blur-sm cursor-pointer touch-pan-y will-change-transform duration-300 hover:shadow-[0_26px_60px_-36px_rgba(37,99,235,0.28)] dark:bg-white/[0.035] dark:backdrop-blur-md ${
           isSwiping ? '!bg-white dark:!bg-gray-900' : ''
         } ${
           !isSwiping ? 'transition-all' : 'transition-[box-shadow,border-color,background-color]'
@@ -425,7 +425,7 @@ export default function TaskCard({
             ? 'border-blue-400 generating shadow-xs shadow-blue-500/10'
             : isSelected
             ? 'border-blue-500 shadow-md dark:shadow-blue-500/10 ring-4 ring-blue-500/10'
-            : 'border-gray-200 dark:border-white/[0.08] hover:border-blue-300 dark:hover:border-blue-500/30 hover:-translate-y-0.5'
+            : 'border-slate-200/80 hover:-translate-y-0.5 hover:border-blue-300 dark:border-white/[0.08] dark:hover:border-blue-500/30'
         }`}
         onClick={(e) => {
           if (Date.now() < suppressClickUntilRef.current) {
@@ -469,7 +469,7 @@ export default function TaskCard({
       )}
       <div className="flex flex-col min-[350px]:flex-row h-auto min-[350px]:h-40">
         {/* 左侧图片区域：小屏幕下自动全宽占满，高度为 40 保持极致自适应比例 */}
-        <div className="w-full min-[350px]:w-40 min-[350px]:min-w-[10rem] h-40 min-[350px]:h-full bg-gray-100 dark:bg-black/20 relative flex items-center justify-center overflow-hidden flex-shrink-0 rounded-t-xl min-[350px]:rounded-t-none min-[350px]:rounded-l-xl">
+        <div className="relative flex h-40 w-full flex-shrink-0 items-center justify-center overflow-hidden bg-slate-100 min-[350px]:h-full min-[350px]:w-40 min-[350px]:min-w-[10rem] dark:bg-slate-950/35">
           {task.status === 'running' && streamPreviewSrc && (
             <>
               <img
@@ -607,9 +607,9 @@ export default function TaskCard({
         </div>
 
         {/* 右侧信息区域 */}
-        <div className="flex-1 p-3 flex flex-col min-w-0">
+        <div className="flex min-w-0 flex-1 flex-col p-3">
           <div className="flex-1 min-h-0 mb-2 overflow-hidden">
-            <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed line-clamp-3">
+            <p className="line-clamp-3 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
               {task.prompt || '(无提示词)'}
             </p>
           </div>

@@ -1,5 +1,7 @@
-import { useMemo, useRef, useState, useEffect } from 'react'
-import { useStore, reuseConfig, editOutputs, removeTask, getCurrentFingerprint } from '../store'
+import { useEffect, useMemo, useRef, useState } from 'react'
+
+import { editOutputs, getCurrentFingerprint, removeTask, reuseConfig, useStore } from '../store'
+import { FolderIcon, PhotoIcon, TagIcon } from './icons'
 import TaskCard from './TaskCard'
 import Dialog from './ui/Dialog'
 
@@ -312,39 +314,39 @@ export default function TaskGrid() {
       className="relative min-h-[50vh]"
     >
       {/* 分组名称面包屑/指示标题 */}
-      <div className="mb-6 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 font-medium select-none" data-no-drag-select>
-        <span>画廊分类</span>
-        <span>/</span>
-        <span className="text-gray-900 dark:text-gray-100 font-semibold">{currentGroupName}</span>
+      <div className="mb-5 flex items-center gap-2 text-xs font-medium text-slate-500 select-none dark:text-slate-400" data-no-drag-select>
+        <span className="rounded-full border border-slate-200/70 bg-white/[0.58] px-2.5 py-1 dark:border-white/[0.08] dark:bg-white/[0.03]">画廊分组</span>
+        <span className="text-slate-300 dark:text-slate-600">/</span>
+        <span className="font-semibold text-slate-950 dark:text-slate-100">{currentGroupName}</span>
       </div>
 
       {!filteredTasks.length ? (
-        <div className="text-center py-20 text-gray-400 dark:text-gray-500">
+        <div className="mx-auto flex max-w-xl flex-col items-center py-20 text-center text-slate-400 dark:text-slate-500">
           {searchQuery || filterFavorite ? (
-            <p className="text-sm">没有找到匹配的记录</p>
+            <div className="rounded-[2rem] border border-slate-200/70 bg-white/[0.64] px-8 py-10 shadow-[0_24px_60px_-42px_rgba(15,23,42,0.45)] dark:border-white/[0.08] dark:bg-white/[0.025]">
+              <PhotoIcon className="mx-auto mb-4 h-10 w-10 text-slate-300 dark:text-slate-600" />
+              <p className="text-sm font-medium text-slate-600 dark:text-slate-300">没有找到匹配的记录</p>
+              <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">换个关键词或清除筛选后再试。</p>
+            </div>
           ) : (
-            <>
-              <svg
-                className="w-16 h-16 mx-auto mb-4 text-gray-200 dark:text-gray-700"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1}
-                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                />
-              </svg>
-              <p className="text-sm">该分组目前没有图片，输入提示词开始生成</p>
-            </>
+            <div className="rounded-[2rem] border border-dashed border-slate-200/80 bg-white/[0.54] px-8 py-10  dark:border-white/[0.08] dark:bg-white/[0.02]">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-3xl border border-blue-200/70 bg-blue-50 text-blue-500 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-300">
+                <PhotoIcon className="h-6 w-6" />
+              </div>
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">该分组目前没有图片</p>
+              <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">在下方输入提示词，生成结果会自动进入当前分组。</p>
+            </div>
           )}
         </div>
       ) : (
-        <div ref={gridRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-10">
-          {filteredTasks.map((task) => (
-            <div key={task.id} className="task-card-wrapper" data-task-id={task.id}>
+        <div ref={gridRef} className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 pb-10">
+          {filteredTasks.map((task, index) => (
+            <div
+              key={task.id}
+              className="task-card-wrapper animate-card-rise"
+              data-task-id={task.id}
+              style={{ animationDelay: `${Math.min(index, 12) * 35}ms` }}
+            >
               <TaskCard
                 task={task}
                 onClick={(e) => {
@@ -373,10 +375,10 @@ export default function TaskGrid() {
       )}
 
       {/* 哨兵节点用于无限滚动加载更多 */}
-      <div ref={sentinelRef} className="h-14 flex items-center justify-center text-xs text-gray-400 dark:text-gray-500 pb-10" data-no-drag-select>
+      <div ref={sentinelRef} className="flex h-14 items-center justify-center pb-10 text-xs text-slate-400 dark:text-slate-500" data-no-drag-select>
         {tasksLoading && (
-          <div className="flex items-center gap-2 py-2">
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600 dark:border-gray-600 dark:border-t-blue-400" />
+          <div className="flex items-center gap-2 rounded-full border border-slate-200/70 bg-white/[0.62] px-3 py-2 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.35)] dark:border-white/[0.08] dark:bg-white/[0.03]">
+            <span className="h-2 w-12 rounded-full shimmer-skeleton" />
             <span>正在加载画廊图片...</span>
           </div>
         )}
@@ -405,10 +407,10 @@ export default function TaskGrid() {
         <Dialog
           isOpen={!!assigningTask}
           onClose={() => setAssigningTask(null)}
-          title="归类图片分组"
-          description="请选择要将该图片归入以下哪个分组："
+          title="归类任务分组"
+          description="请选择要将该任务归入以下哪个分组："
         >
-          <div className="grid grid-cols-1 gap-2 pt-2">
+          <div className="grid grid-cols-1 gap-2 py-10 max-h-screen overflow-y-scroll">
             <button
               onClick={() => {
                 useStore.getState().assignTaskToGroup(assigningTask.id, null)
@@ -417,7 +419,7 @@ export default function TaskGrid() {
               className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 dark:border-white/[0.08] hover:bg-gray-100 dark:hover:bg-white/[0.04] transition-all text-sm font-semibold flex items-center justify-between text-gray-700 dark:text-gray-300"
             >
               <span className="flex items-center gap-2">
-                <span>📂</span>
+                <FolderIcon className="h-4 w-4 text-slate-400" />
                 <span>未分类</span>
               </span>
             </button>
@@ -431,7 +433,7 @@ export default function TaskGrid() {
                 className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 dark:border-white/[0.08] hover:bg-gray-100 dark:hover:bg-white/[0.04] transition-all text-sm font-semibold flex items-center justify-between text-gray-700 dark:text-gray-300"
               >
                 <span className="flex items-center gap-2">
-                  <span>🏷️</span>
+                  <TagIcon className="h-4 w-4 text-slate-400" />
                   <span>{g.name}</span>
                 </span>
               </button>

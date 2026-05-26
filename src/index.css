@@ -42,10 +42,8 @@ body {
   padding: 0;
   min-height: 100dvh;
   background:
-    radial-gradient(circle at 10% 20%, rgba(219, 234, 254, 0.4), transparent 45rem),
-    radial-gradient(circle at 90% 10%, rgba(245, 243, 255, 0.4), transparent 45rem),
-    radial-gradient(circle at 50% 80%, rgba(250, 232, 255, 0.25), transparent 50rem),
-    linear-gradient(180deg, hsl(var(--background)), hsl(220 20% 95.5%));
+    radial-gradient(circle at 12% 12%, rgba(219, 234, 254, 0.52), transparent 38rem),
+    linear-gradient(180deg, hsl(var(--background)), hsl(220 22% 95.5%));
   color: hsl(var(--foreground));
   font-feature-settings: "tnum" 1, "cv02" 1, "cv03" 1;
   -webkit-user-select: none;
@@ -117,9 +115,8 @@ body.drag-selecting * {
 
 .dark body {
   background:
-    radial-gradient(circle at 10% 20%, rgba(30, 58, 138, 0.2), transparent 45rem),
-    radial-gradient(circle at 90% 10%, rgba(88, 28, 135, 0.15), transparent 45rem),
-    radial-gradient(circle at 50% 80%, rgba(20, 83, 45, 0.08), transparent 50rem),
+    radial-gradient(circle at 16% 10%, rgba(30, 64, 175, 0.22), transparent 42rem),
+    radial-gradient(circle at 80% 80%, rgba(15, 23, 42, 0.55), transparent 40rem),
     linear-gradient(180deg, hsl(var(--background)), hsl(225 24% 5.5%));
 }
 
@@ -477,26 +474,35 @@ input[type="number"] {
   100% { background-position: 0% 50%; }
 }
 
+@keyframes card-rise-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.animate-card-rise {
+  animation: card-rise-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 /* 高级毛玻璃卡片 */
 .premium-glass-card {
-  background: rgba(255, 255, 255, 0.68) !important;
-  backdrop-filter: blur(24px) saturate(130%) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(130%) !important;
-  border: 1px solid rgba(226, 232, 240, 0.8) !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  backdrop-filter: blur(24px) saturate(118%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(118%) !important;
+  border: 1px solid rgba(203, 213, 225, 0.72) !important;
   box-shadow: 
-    0 12px 40px -10px rgba(15, 23, 42, 0.08),
+    0 18px 42px -24px rgba(15, 23, 42, 0.26),
     0 1px 1px 0 rgba(255, 255, 255, 0.8) inset,
     0 0 0 1px rgba(0, 0, 0, 0.02) !important;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
 
 .dark .premium-glass-card {
-  background: rgba(13, 17, 28, 0.65) !important;
-  backdrop-filter: blur(24px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(140%) !important;
-  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  background: rgba(20, 24, 34, 0.72) !important;
+  backdrop-filter: blur(24px) saturate(118%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(118%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
   box-shadow: 
-    0 20px 50px -12px rgba(0, 0, 0, 0.55),
+    0 24px 54px -18px rgba(0, 0, 0, 0.58),
     0 1px 1px 0 rgba(255, 255, 255, 0.08) inset,
     0 0 0 1px rgba(255, 255, 255, 0.02) !important;
 }
@@ -516,13 +522,13 @@ input[type="number"] {
   border-color: rgba(59, 130, 246, 0.35) !important;
   box-shadow: 
     0 25px 60px -15px rgba(0, 0, 0, 0.65),
-    0 0 18px 2px rgba(59, 130, 246, 0.18),
+    0 0 0 3px rgba(59, 130, 246, 0.08),
     0 0 0 1px rgba(59, 130, 246, 0.25) !important;
 }
 
-/* 炫彩按钮流光渐变（天蓝到靛紫） */
+/* 克制的主操作按钮动效 */
 .gradient-submit-btn {
-  background: linear-gradient(135deg, #3b82f6, #6366f1, #8b5cf6) !important;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8, #0f5fc7) !important;
   background-size: 200% 200% !important;
   animation: shimmer-bg 4s ease infinite !important;
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
@@ -530,8 +536,7 @@ input[type="number"] {
 .gradient-submit-btn:hover:not(:disabled) {
   transform: translateY(-1.5px) !important;
   box-shadow: 
-    0 10px 20px -8px rgba(99, 102, 241, 0.5),
-    0 0 12px 1px rgba(139, 92, 246, 0.25) !important;
+    0 12px 24px -12px rgba(37, 99, 235, 0.55) !important;
 }
 .gradient-submit-btn:active:not(:disabled) {
   transform: translateY(0.5px) scale(0.97) !important;
@@ -555,7 +560,7 @@ input[type="number"] {
    AI 生图流光与骨架屏特效 (Aceternity UI Style)
    ========================================================================== */
 
-/* 1. AI 炫彩流光动画（蓝-紫-粉-绿循环往复） */
+/* 1. AI 生成状态流光动画 */
 @keyframes ai-gradient-flow {
   0% { background-position: 0% 50%; }
   50% { background-position: 100% 50%; }
@@ -563,7 +568,7 @@ input[type="number"] {
 }
 
 .ai-generating-glow {
-  background: linear-gradient(-45deg, #2563eb, #8b5cf6, #ec4899, #10b981, #2563eb) !important;
+  background: linear-gradient(-45deg, #1d4ed8, #2563eb, #0f766e, #1d4ed8) !important;
   background-size: 400% 400% !important;
   animation: ai-gradient-flow 8s cubic-bezier(0.4, 0, 0.2, 1) infinite !important;
 }
@@ -575,12 +580,12 @@ input[type="number"] {
     box-shadow: 0 0 12px 1px rgba(37, 99, 235, 0.12);
   }
   33% {
-    border-color: rgba(139, 92, 246, 0.5);
-    box-shadow: 0 0 18px 2px rgba(139, 92, 246, 0.18);
+    border-color: rgba(14, 116, 144, 0.42);
+    box-shadow: 0 0 18px 2px rgba(14, 116, 144, 0.12);
   }
   66% {
-    border-color: rgba(236, 72, 153, 0.45);
-    box-shadow: 0 0 15px 1.5px rgba(236, 72, 153, 0.15);
+    border-color: rgba(37, 99, 235, 0.36);
+    box-shadow: 0 0 15px 1.5px rgba(37, 99, 235, 0.1);
   }
 }
 

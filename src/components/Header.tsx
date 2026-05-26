@@ -12,8 +12,6 @@ interface HeaderProps {
 }
 
 export default function Header({ onOpenShowcase }: HeaderProps) {
-  const setShowSettings = useStore((s) => s.setShowSettings)
-  const setConfirmDialog = useStore((s) => s.setConfirmDialog)
   const settings = useStore((s) => s.settings)
   const setSettings = useStore((s) => s.setSettings)
   const setSidebarOpen = useStore((s) => s.setSidebarOpen)
@@ -39,13 +37,13 @@ export default function Header({ onOpenShowcase }: HeaderProps) {
 
   return (
     <>
-      <header data-no-drag-select className="safe-area-top sticky top-0 z-30 w-full border-b border-gray-200/70 bg-white/82 shadow-[0_1px_20px_rgba(15,23,42,0.04)] backdrop-blur-xl dark:border-white/[0.08] dark:bg-gray-950/82 dark:shadow-[0_1px_22px_rgba(0,0,0,0.28)]">
-        <div className="safe-area-x safe-header-inner max-w-7xl mx-auto flex items-center justify-between relative">
+      <header data-no-drag-select className="safe-area-top sticky top-0 z-30 w-full border-b border-slate-200/70 bg-white/[0.78] shadow-[0_1px_24px_rgba(15,23,42,0.045)] backdrop-blur-2xl dark:border-white/[0.08] dark:bg-[#10141d]/[0.80] dark:shadow-[0_1px_26px_rgba(0,0,0,0.32)]">
+        <div className="safe-area-x safe-header-inner mx-auto flex items-center justify-between relative">
           <div className="flex-1 min-w-0 pr-2 flex items-center gap-2">
             {/* 移动端汉堡菜单按钮 */}
             <button
               onClick={() => setSidebarOpen(true)}
-              className="p-2 -ml-2 mr-1 rounded-lg hover:bg-gray-100 dark:hover:bg-white/[0.05] lg:hidden text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+              className="-ml-2 mr-1 rounded-xl p-2 text-gray-500 transition-all hover:bg-slate-100 hover:text-gray-800 active:scale-95 dark:text-gray-400 dark:hover:bg-white/[0.06] dark:hover:text-gray-100 lg:hidden"
               aria-label="打开侧栏"
             >
               <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -53,7 +51,7 @@ export default function Header({ onOpenShowcase }: HeaderProps) {
               </svg>
             </button>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex shrink-0 items-center gap-1 rounded-2xl border border-slate-200/70 bg-white/[0.55] p-1 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.35)] dark:border-white/[0.08] dark:bg-white/[0.03]">
             <div
               className="relative"
               {...showcaseTooltip.handlers}
@@ -63,7 +61,7 @@ export default function Header({ onOpenShowcase }: HeaderProps) {
                   dismissAllTooltips()
                   onOpenShowcase?.()
                 }}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
+                className="rounded-xl p-2 transition-all hover:bg-slate-100 active:scale-95 dark:hover:bg-white/[0.06]"
                 aria-label="提示词展示库"
               >
                 <PhotoIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
@@ -79,7 +77,7 @@ export default function Header({ onOpenShowcase }: HeaderProps) {
             >
               <button
                 onClick={toggleTheme}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-all duration-300 active:scale-95 group"
+                className="group rounded-xl p-2 transition-all duration-300 hover:bg-slate-100 active:scale-95 dark:hover:bg-white/[0.06]"
                 aria-label="切换主题"
               >
                 {currentTheme === 'light' && (
@@ -96,7 +94,7 @@ export default function Header({ onOpenShowcase }: HeaderProps) {
                   </svg>
                 )}
                 {currentTheme === 'dark' && (
-                  <svg className="w-5 h-5 text-indigo-400 group-hover:-rotate-12 transition-transform duration-300" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-blue-400 group-hover:-rotate-12 transition-transform duration-300" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                     <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
                   </svg>
                 )}
@@ -122,7 +120,7 @@ export default function Header({ onOpenShowcase }: HeaderProps) {
                   dismissAllTooltips()
                   setShowHelp(true)
                 }}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-900 transition-colors"
+                className="rounded-xl p-2 transition-all hover:bg-slate-100 active:scale-95 dark:hover:bg-white/[0.06]"
                 aria-label="操作指南"
               >
                 <HelpCircleIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />

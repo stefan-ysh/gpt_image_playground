@@ -80,16 +80,16 @@ export default function App() {
 
   return (
     <AuthGuard>
-      <div className="flex h-screen w-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
+      <div className="flex h-[100dvh] min-h-[100dvh] w-screen overflow-hidden bg-[hsl(var(--background))] text-[hsl(var(--foreground))]">
         <Sidebar />
         <div
-          className="flex-1 flex flex-col min-w-0 h-full relative overflow-y-auto"
+          className="relative flex h-full min-w-0 flex-1 flex-col overflow-y-auto"
           data-home-main
           data-drag-select-surface
         >
           <Header onOpenShowcase={() => setShowShowcase(true)} />
-          <main className="flex-1 pb-48 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-7xl mx-auto space-y-4 pt-4">
+          <main className="flex-1 px-4 pb-48 sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-7xl space-y-4 pt-5">
               <SearchBar />
               <TaskGrid />
             </div>
