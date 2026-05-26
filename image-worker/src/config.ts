@@ -1,0 +1,20 @@
+import 'dotenv/config'
+
+export const config = {
+  workerId: process.env.WORKER_ID || `worker-${Math.random().toString(36).slice(2, 8)}`,
+  concurrency: Number(process.env.WORKER_CONCURRENCY || 3),
+  pollIntervalMs: Number(process.env.WORKER_POLL_INTERVAL_MS || 3000),
+  lockTtlMs: Number(process.env.WORKER_LOCK_TTL_MS || 120000),
+
+  mysqlUrl: process.env.MYSQL_URL || '',
+
+  wsPort: Number(process.env.WS_PORT || 3210),
+
+  cos: {
+    secretId: process.env.COS_SECRET_ID || '',
+    secretKey: process.env.COS_SECRET_KEY || '',
+    bucket: process.env.COS_BUCKET || '',
+    region: process.env.COS_REGION || '',
+    domain: process.env.COS_DOMAIN || '',
+  },
+}
