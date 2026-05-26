@@ -63,6 +63,7 @@ export default function TaskGrid() {
       return prompt.includes(q) || paramStr.includes(q)
     })
   }, [tasks, searchQuery, filterStatus, filterFavorite])
+  const showInitialLoading = tasksLoading && filteredTasks.length === 0
 
   const handleDelete = (task: typeof tasks[0]) => {
     setConfirmDialog({
@@ -320,7 +321,17 @@ export default function TaskGrid() {
         <span className="font-semibold text-slate-950 dark:text-slate-100">{currentGroupName}</span>
       </div>
 
-      {!filteredTasks.length ? (
+      {showInitialLoading ? (
+        <div className="mx-auto flex max-w-xl flex-col items-center py-20 text-center text-slate-400 dark:text-slate-500">
+          <div className="rounded-[2rem] border border-slate-200/70 bg-white/[0.54] px-8 py-10 shadow-[0_24px_60px_-42px_rgba(15,23,42,0.45)] dark:border-white/[0.08] dark:bg-white/[0.025]">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-3xl border border-blue-200/70 bg-blue-50 text-blue-500 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-300">
+              <PhotoIcon className="h-6 w-6" />
+            </div>
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">正在加载画廊图片...</p>
+            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">图片列表加载完成后会显示在这里。</p>
+          </div>
+        </div>
+      ) : !filteredTasks.length ? (
         <div className="mx-auto flex max-w-xl flex-col items-center py-20 text-center text-slate-400 dark:text-slate-500">
           {searchQuery || filterFavorite ? (
             <div className="rounded-[2rem] border border-slate-200/70 bg-white/[0.64] px-8 py-10 shadow-[0_24px_60px_-42px_rgba(15,23,42,0.45)] dark:border-white/[0.08] dark:bg-white/[0.025]">
@@ -376,7 +387,7 @@ export default function TaskGrid() {
 
       {/* 哨兵节点用于无限滚动加载更多 */}
       <div ref={sentinelRef} className="flex h-14 items-center justify-center pb-10 text-xs text-slate-400 dark:text-slate-500" data-no-drag-select>
-        {tasksLoading && (
+        {tasksLoading && !showInitialLoading && (
           <div className="flex items-center gap-2 rounded-full border border-slate-200/70 bg-white/[0.62] px-3 py-2 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.35)] dark:border-white/[0.08] dark:bg-white/[0.03]">
             <span className="h-2 w-12 rounded-full shimmer-skeleton" />
             <span>正在加载画廊图片...</span>
