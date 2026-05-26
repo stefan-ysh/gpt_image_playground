@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { RowDataPacket } from 'mysql2'
+import { NextResponse } from 'next/server'
+
 import type {
     ApiProfile,
     CustomProviderDefinition,
@@ -351,6 +352,7 @@ export async function POST(request: Request) {
                 null,
                 null,
                 0,
+                groupId,
                 null,
                 null,
                 null,

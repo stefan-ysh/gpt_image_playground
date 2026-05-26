@@ -68,6 +68,8 @@ const MAX_THUMBNAIL_CACHE_ENTRIES = 80
 const MAX_THUMBNAIL_BACKFILL_CONCURRENT = 4
 const FAL_RECOVERY_POLL_MS = 10_000
 const CUSTOM_RECOVERY_POLL_MS = 10_000
+const WORKER_TASK_REFRESH_MS = 3000
+const workerTaskRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const SUPPORT_PROMPT_IMAGE_THRESHOLD = 50
 const falRecoveryTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const customRecoveryTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -1128,6 +1130,11 @@ export const useStore = create<AppState>()(
                 }
               }
               scheduleTaskRemoteImageTransfers(task, 0)
+
+              if (isWorkerRefreshableStatus(task.status)) {
+                scheduleWorkerTaskRefresh(task.id, 1000)
+              }
+
               return task
             })
 
@@ -1275,6 +1282,10 @@ export const useStore = create<AppState>()(
               ? tasks.map((item: TaskRecord) => item.id === taskId ? task : item)
               : [task, ...tasks],
           )
+
+          if (!isWorkerRefreshableStatus(task.status)) {
+            clearWorkerTaskRefreshTimer(taskId)
+          }
 
           return task
         } catch (error) {
@@ -1771,6 +1782,47 @@ function scheduleCustomRecovery(taskId: string, delayMs = CUSTOM_RECOVERY_POLL_M
   customRecoveryTimers.set(taskId, timer)
 }
 
+function isWorkerRefreshableStatus(status: TaskRecord['status']) {
+  return [
+    'created',
+    'queued',
+    'submitting',
+    'submitted',
+    'polling',
+    'polling_retryable',
+    'succeeded_raw',
+    'storing_images',
+    'transfer_pending',
+    'submit_unknown',
+  ].includes(status)
+}
+
+function clearWorkerTaskRefreshTimer(taskId: string) {
+  const timer = workerTaskRefreshTimers.get(taskId)
+  if (timer) clearTimeout(timer)
+  workerTaskRefreshTimers.delete(taskId)
+}
+
+function scheduleWorkerTaskRefresh(taskId: string, delayMs = WORKER_TASK_REFRESH_MS) {
+  if (workerTaskRefreshTimers.has(taskId)) return
+
+  const timer = setTimeout(() => {
+    workerTaskRefreshTimers.delete(taskId)
+
+    void (async () => {
+      const task = await useStore.getState().refreshTask(taskId)
+
+      if (task && isWorkerRefreshableStatus(task.status)) {
+        scheduleWorkerTaskRefresh(taskId)
+      } else {
+        clearWorkerTaskRefreshTimer(taskId)
+      }
+    })()
+  }, delayMs)
+
+  workerTaskRefreshTimers.set(taskId, timer)
+}
+
 function hasActualParams(params: Partial<TaskParams> | undefined): params is Partial<TaskParams> {
   return Boolean(params && Object.keys(params).length > 0)
 }
@@ -1963,6 +2015,9 @@ export async function initStore() {
 
       for (const task of processedTasks) {
         scheduleTaskRemoteImageTransfers(task, 0)
+        if (isWorkerRefreshableStatus(task.status)) {
+          scheduleWorkerTaskRefresh(task.id, 1000)
+        }
         if (
           task.apiProvider === 'fal' &&
           task.falRequestId &&
@@ -2234,7 +2289,7 @@ export async function submitTask(
         }),
       )
     }
-
+    scheduleWorkerTaskRefresh(workerTask.id, 1000)
     showToast('任务已提交后台生成', 'success')
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
