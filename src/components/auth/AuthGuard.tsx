@@ -1,9 +1,25 @@
 import React, { useEffect, useState } from 'react'
-import type { UserInfo } from '../../types'
 import { useStore } from '../../store'
 
 interface AuthGuardProps {
   children: React.ReactNode
+}
+
+const SESSION_PENDING_COOKIE = 'finance_session_pending'
+const AUTH_RETRY_INTERVAL_MS = 1000
+const AUTH_RETRY_ATTEMPTS_AFTER_RETURN = 6
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+function hasLoginReturnMarker() {
+  const params = new URLSearchParams(window.location.search)
+  return params.has('session_redirect') || document.cookie.split(';').some((item) => item.trim().startsWith(`${SESSION_PENDING_COOKIE}=`))
+}
+
+function clearLoginReturnMarker() {
+  document.cookie = `${SESSION_PENDING_COOKIE}=; Max-Age=0; Path=/; SameSite=Lax`
 }
 
 export default function AuthGuard({ children }: AuthGuardProps) {
@@ -16,35 +32,60 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     let active = true
 
     async function checkAuth() {
-      try {
-        const response = await fetch('/api/auth/me', {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-          },
-        })
+      const retryAfterReturn = hasLoginReturnMarker()
+      const maxAttempts = retryAfterReturn ? AUTH_RETRY_ATTEMPTS_AFTER_RETURN : 1
 
-        if (!active) return
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        try {
+          const response = await fetch('/api/auth/me', {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+            },
+            credentials: 'include',
+          })
 
-        if (response.ok) {
-          const result = await response.json()
-          if (result.success && result.data) {
-            useStore.getState().setCurrentUser(result.data)
-            setIsAuthenticated(true)
-            setIsLoading(false)
-            return
+          if (!active) return
+
+          if (response.ok) {
+            const result = await response.json()
+            if (result.success && result.data) {
+              clearLoginReturnMarker()
+              useStore.getState().setCurrentUser(result.data)
+              setIsAuthenticated(true)
+              setIsLoading(false)
+              return
+            }
           }
-        }
 
-        // 未登录或校验失败
-        setIsAuthenticated(false)
-        setIsLoading(false)
-      } catch (err) {
-        if (!active) return
-        console.error('身份验证校验请求失败', err)
-        setErrorMsg('无法连接至鉴权中心')
-        setIsAuthenticated(false)
-        setIsLoading(false)
+          if (response.status === 401 && attempt < maxAttempts - 1) {
+            await sleep(AUTH_RETRY_INTERVAL_MS)
+            continue
+          }
+
+          // 未登录或校验失败
+          if (response.status === 401) {
+            console.warn('User is not authenticated (401)')
+          } else {
+            console.warn('Authentication check failed', { status: response.status })
+            const result = await response.json().catch(() => null)
+            setErrorMsg(result?.error || '登录态校验失败，请检查服务端配置')
+          }
+          setIsAuthenticated(false)
+          setIsLoading(false)
+          return
+        } catch (err) {
+          if (!active) return
+          if (attempt < maxAttempts - 1) {
+            await sleep(AUTH_RETRY_INTERVAL_MS)
+            continue
+          }
+          console.error('Authentication check failed:', err)
+          setErrorMsg('无法连接至鉴权中心')
+          setIsAuthenticated(false)
+          setIsLoading(false)
+          return
+        }
       }
     }
 
@@ -56,15 +97,20 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   }, [])
 
   useEffect(() => {
-    if (isLoading || isAuthenticated) return
+    if (isLoading || isAuthenticated || errorMsg) return
 
     // 触发倒计时跳转
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(timer)
-          const dashboardUrl = import.meta.env.VITE_DASHBOARD_URL || 'http://localhost:3000'
-          const loginUrl = `${dashboardUrl}/signin?redirect=${encodeURIComponent(window.location.href)}`
+          const returnUrl = new URL(window.location.href)
+          returnUrl.searchParams.set('session_redirect', '1')
+          const rawDashboardUrl = process.env.NEXT_PUBLIC_DASHBOARD_URL || 'https://admin.cosmorigin.com'
+          const dashboardUrl = rawDashboardUrl.match(/^https?:\/\//i)
+            ? rawDashboardUrl.replace(/\/+$/, '')
+            : `https://${rawDashboardUrl.replace(/\/+$/, '')}`
+          const loginUrl = `${dashboardUrl}/signin?redirect=${encodeURIComponent(returnUrl.toString())}`
           window.location.href = loginUrl
           return 0
         }
@@ -73,7 +119,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     }, 1000)
 
     return () => clearInterval(timer)
-  }, [isLoading, isAuthenticated])
+  }, [isLoading, isAuthenticated, errorMsg])
 
   if (isLoading) {
     return (
@@ -113,9 +159,11 @@ export default function AuthGuard({ children }: AuthGuardProps) {
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
             {errorMsg || '正在引导您跳转至管理后台进行登录校验'}
           </p>
-          <div className="mt-5 px-4 py-1.5 rounded-full bg-blue-50 dark:bg-blue-500/10 border border-blue-100/50 dark:border-blue-500/20 text-xs font-medium text-blue-600 dark:text-blue-400 animate-pulse">
-            {countdown} 秒后自动跳转
-          </div>
+          {!errorMsg && (
+            <div className="mt-5 px-4 py-1.5 rounded-full bg-blue-50 dark:bg-blue-500/10 border border-blue-100/50 dark:border-blue-500/20 text-xs font-medium text-blue-600 dark:text-blue-400 animate-pulse">
+              {countdown} 秒后自动跳转
+            </div>
+          )}
         </div>
       </div>
     )

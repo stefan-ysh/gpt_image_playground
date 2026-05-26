@@ -1,103 +1,157 @@
 import type { TaskRecord, StoredImage, StoredImageThumbnail } from '../types'
 
-const DB_NAME = 'gpt-image-playground'
-const DB_VERSION = 3
-const STORE_TASKS = 'tasks'
-const STORE_IMAGES = 'images'
-const STORE_THUMBNAILS = 'thumbnails'
-const STORE_APP_STATE = 'app_state'
 const THUMBNAIL_MAX_SIZE = 720
 const THUMBNAIL_QUALITY = 0.9
 const THUMBNAIL_VERSION = 2
 
 export const CURRENT_THUMBNAIL_VERSION = THUMBNAIL_VERSION
 
-function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION)
-    req.onupgradeneeded = (e) => {
-      const db = (e.target as IDBOpenDBRequest).result
-      if (!db.objectStoreNames.contains(STORE_TASKS)) {
-        db.createObjectStore(STORE_TASKS, { keyPath: 'id' })
-      }
-      if (!db.objectStoreNames.contains(STORE_IMAGES)) {
-        db.createObjectStore(STORE_IMAGES, { keyPath: 'id' })
-      }
-      if (!db.objectStoreNames.contains(STORE_THUMBNAILS)) {
-        db.createObjectStore(STORE_THUMBNAILS, { keyPath: 'id' })
-      }
-      if (!db.objectStoreNames.contains(STORE_APP_STATE)) {
-        db.createObjectStore(STORE_APP_STATE, { keyPath: 'id' })
-      }
+// ===== App State (Zustand Async SQL storage) =====
+
+export async function getAppState(key: string): Promise<{ id: string; value: unknown } | undefined> {
+  try {
+    const res = await fetch(`/api/state?key=${encodeURIComponent(key)}`, {
+      credentials: 'include',
+    })
+    const json = await res.json()
+    if (json.success && json.data !== null) {
+      return { id: key, value: json.data }
     }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
+  } catch (e) {
+    console.error('Failed to get app state:', e)
+  }
+  return undefined
+}
+
+export async function putAppState(key: string, value: unknown): Promise<string> {
+  const res = await fetch('/api/state', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key, value }),
+    credentials: 'include',
   })
+  const json = await res.json()
+  if (!json.success) throw new Error(json.error || 'Failed to save state')
+  return key
 }
 
-function dbTransaction<T>(
-  storeName: string,
-  mode: IDBTransactionMode,
-  fn: (store: IDBObjectStore) => IDBRequest<T>,
-): Promise<T> {
-  return openDB().then(
-    (db) =>
-      new Promise((resolve, reject) => {
-        const tx = db.transaction(storeName, mode)
-        const store = tx.objectStore(storeName)
-        const req = fn(store)
-        req.onsuccess = () => resolve(req.result)
-        req.onerror = () => reject(req.error)
-      }),
-  )
-}
-
-// ===== App State (Zustand Async IndexedDB storage) =====
-
-export function getAppState(key: string): Promise<{ id: string; value: unknown } | undefined> {
-  return dbTransaction(STORE_APP_STATE, 'readonly', (s) => s.get(key))
-}
-
-export function putAppState(key: string, value: unknown): Promise<IDBValidKey> {
-  return dbTransaction(STORE_APP_STATE, 'readwrite', (s) => s.put({ id: key, value }))
-}
-
-export function deleteAppState(key: string): Promise<undefined> {
-  return dbTransaction(STORE_APP_STATE, 'readwrite', (s) => s.delete(key))
+export async function deleteAppState(key: string): Promise<undefined> {
+  try {
+    await fetch(`/api/state?key=${encodeURIComponent(key)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    })
+  } catch (e) {
+    console.error('Failed to delete app state:', e)
+  }
+  return undefined
 }
 
 // ===== Tasks =====
 
-export function getAllTasks(): Promise<TaskRecord[]> {
-  return dbTransaction(STORE_TASKS, 'readonly', (s) => s.getAll())
+export async function getAllTasks(): Promise<TaskRecord[]> {
+  try {
+    const res = await fetch('/api/tasks', {
+      credentials: 'include',
+    })
+    const json = await res.json()
+    if (json.success) return json.data
+  } catch (e) {
+    console.error('Failed to get tasks:', e)
+  }
+  return []
 }
 
-export function putTask(task: TaskRecord): Promise<IDBValidKey> {
-  return dbTransaction(STORE_TASKS, 'readwrite', (s) => s.put(task))
+export async function putTask(task: TaskRecord): Promise<string> {
+  const res = await fetch('/api/tasks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task }),
+    credentials: 'include',
+  })
+  const json = await res.json()
+  if (!json.success) throw new Error(json.error || 'Failed to put task')
+  return task.id
 }
 
-export function deleteTask(id: string): Promise<undefined> {
-  return dbTransaction(STORE_TASKS, 'readwrite', (s) => s.delete(id))
+export async function deleteTask(id: string, protectedImageIds: string[] = []): Promise<undefined> {
+  try {
+    await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ protectedImageIds }),
+      credentials: 'include',
+    })
+  } catch (e) {
+    console.error('Failed to delete task:', e)
+  }
+  return undefined
 }
 
-export function clearTasks(): Promise<undefined> {
-  return dbTransaction(STORE_TASKS, 'readwrite', (s) => s.clear())
+export async function clearTasks(): Promise<undefined> {
+  try {
+    const tasks = await getAllTasks()
+    await Promise.all(tasks.map((task) => deleteTask(task.id)))
+  } catch (e) {
+    console.error('Failed to clear tasks:', e)
+  }
+  return undefined
 }
 
 // ===== Images =====
 
-export function getImage(id: string): Promise<StoredImage | undefined> {
-  if (typeof id === 'string' && /^https?:\/\//i.test(id)) {
-    return Promise.resolve({ id, dataUrl: id, source: 'generated' })
+function normalizeCosUrlToProxy(url: string): string {
+  if (typeof url !== 'string') return url
+  const match = url.match(/(uploads\/.+)$/)
+  if (match) {
+    return `/api/files/cos/${match[1]}`
   }
-  return dbTransaction(STORE_IMAGES, 'readonly', (s) => s.get(id))
+  return url
 }
 
-export function getStoredImageThumbnail(id: string): Promise<StoredImageThumbnail | undefined> {
-  if (typeof id === 'string' && /^https?:\/\//i.test(id)) {
-    return Promise.resolve({ id, thumbnailDataUrl: id, thumbnailVersion: THUMBNAIL_VERSION })
+export async function getImage(id: string): Promise<StoredImage | undefined> {
+  if (typeof id === 'string' && (/^https?:\/\//i.test(id) || id.startsWith('/') || id.includes('uploads/'))) {
+    return { id, dataUrl: normalizeCosUrlToProxy(id), source: 'generated' }
   }
-  return dbTransaction(STORE_THUMBNAILS, 'readonly', (s) => s.get(id))
+  try {
+    const res = await fetch(`/api/images/${encodeURIComponent(id)}`, {
+      credentials: 'include',
+    })
+    const json = await res.json()
+    if (json.success) {
+      return {
+        ...json.data,
+        dataUrl: normalizeCosUrlToProxy(json.data.dataUrl)
+      }
+    }
+  } catch (e) {
+    console.error('Failed to get image:', e)
+  }
+  return undefined
+}
+
+export async function getStoredImageThumbnail(id: string): Promise<StoredImageThumbnail | undefined> {
+  if (typeof id === 'string' && (/^https?:\/\//i.test(id) || id.startsWith('/') || id.includes('uploads/'))) {
+    return { id, thumbnailDataUrl: normalizeCosUrlToProxy(id), thumbnailVersion: THUMBNAIL_VERSION }
+  }
+  try {
+    const res = await fetch(`/api/images/${encodeURIComponent(id)}`, {
+      credentials: 'include',
+    })
+    const json = await res.json()
+    if (json.success) {
+      return {
+        id,
+        thumbnailDataUrl: normalizeCosUrlToProxy(json.data.thumbnailDataUrl),
+        width: json.data.width,
+        height: json.data.height,
+        thumbnailVersion: json.data.thumbnailVersion,
+      }
+    }
+  } catch (e) {
+    console.error('Failed to get image thumbnail:', e)
+  }
+  return undefined
 }
 
 export async function getStoredFreshImageThumbnail(id: string): Promise<StoredImageThumbnail | undefined> {
@@ -105,95 +159,34 @@ export async function getStoredFreshImageThumbnail(id: string): Promise<StoredIm
   return thumbnail?.thumbnailVersion === THUMBNAIL_VERSION ? thumbnail : undefined
 }
 
-export function putImageThumbnail(thumbnail: StoredImageThumbnail): Promise<IDBValidKey> {
-  return dbTransaction(STORE_THUMBNAILS, 'readwrite', (s) => s.put(thumbnail))
+export async function putImageThumbnail(thumbnail: StoredImageThumbnail): Promise<string> {
+  // 缩略图由 storeImage API 统一处理上传，此处空实现
+  return thumbnail.id
 }
 
 export async function getImageThumbnail(id: string): Promise<StoredImageThumbnail | undefined> {
-  if (typeof id === 'string' && /^https?:\/\//i.test(id)) {
-    return { id, thumbnailDataUrl: id, thumbnailVersion: THUMBNAIL_VERSION }
-  }
-  const existingThumbnail = await getStoredImageThumbnail(id)
-  if (existingThumbnail?.thumbnailVersion === THUMBNAIL_VERSION) {
-    const image = await getImage(id)
-    if (image && (!image.width || !image.height) && existingThumbnail.width && existingThumbnail.height) {
-      await putImage({ ...image, width: existingThumbnail.width, height: existingThumbnail.height })
-    }
-    return existingThumbnail
-  }
-
-  const image = await getImage(id)
-  if (!image) return undefined
-  const legacyImage = image as StoredImage & Partial<StoredImageThumbnail>
-  if (legacyImage.thumbnailDataUrl && legacyImage.thumbnailVersion === THUMBNAIL_VERSION) {
-    const thumbnail: StoredImageThumbnail = {
-      id,
-      thumbnailDataUrl: legacyImage.thumbnailDataUrl,
-      width: legacyImage.width,
-      height: legacyImage.height,
-      thumbnailVersion: THUMBNAIL_VERSION,
-    }
-    await putImageThumbnail(thumbnail)
-    if ((!image.width || !image.height) && thumbnail.width && thumbnail.height) {
-      await putImage({ ...image, width: thumbnail.width, height: thumbnail.height })
-    }
-    return thumbnail
-  }
-
-  const metadata = await safeCreateImageThumbnail(image.dataUrl)
-  if (!metadata.thumbnailDataUrl) return undefined
-  const thumbnail: StoredImageThumbnail = {
-    id,
-    thumbnailDataUrl: metadata.thumbnailDataUrl,
-    width: metadata.width,
-    height: metadata.height,
-    thumbnailVersion: THUMBNAIL_VERSION,
-  }
-  await putImageThumbnail(thumbnail)
-  if (metadata.width && metadata.height && (image.width !== metadata.width || image.height !== metadata.height)) {
-    await putImage({ ...image, width: metadata.width, height: metadata.height })
-  }
-  return thumbnail
+  return getStoredImageThumbnail(id)
 }
 
-export function getAllImages(): Promise<StoredImage[]> {
-  return dbTransaction(STORE_IMAGES, 'readonly', (s) => s.getAll())
+export async function getAllImages(): Promise<StoredImage[]> {
+  return []
 }
 
-export function getAllImageIds(): Promise<string[]> {
-  return dbTransaction(STORE_IMAGES, 'readonly', (s) => s.getAllKeys()).then((keys) =>
-    keys.map(String),
-  )
+export async function getAllImageIds(): Promise<string[]> {
+  return []
 }
 
-export function putImage(image: StoredImage): Promise<IDBValidKey> {
-  return dbTransaction(STORE_IMAGES, 'readwrite', (s) => s.put(image))
+export async function putImage(image: StoredImage): Promise<string> {
+  return storeImage(image.dataUrl, image.source || 'upload')
 }
 
-export function deleteImage(id: string): Promise<undefined> {
-  return openDB().then(
-    (db) =>
-      new Promise((resolve, reject) => {
-        const tx = db.transaction([STORE_IMAGES, STORE_THUMBNAILS], 'readwrite')
-        tx.objectStore(STORE_IMAGES).delete(id)
-        tx.objectStore(STORE_THUMBNAILS).delete(id)
-        tx.oncomplete = () => resolve(undefined)
-        tx.onerror = () => reject(tx.error)
-      }),
-  )
+export async function deleteImage(id: string): Promise<undefined> {
+  // 图片去重共享存储，通常无需在前端做显式物理删除
+  return undefined
 }
 
-export function clearImages(): Promise<undefined> {
-  return openDB().then(
-    (db) =>
-      new Promise((resolve, reject) => {
-        const tx = db.transaction([STORE_IMAGES, STORE_THUMBNAILS], 'readwrite')
-        tx.objectStore(STORE_IMAGES).clear()
-        tx.objectStore(STORE_THUMBNAILS).clear()
-        tx.oncomplete = () => resolve(undefined)
-        tx.onerror = () => reject(tx.error)
-      }),
-  )
+export async function clearImages(): Promise<undefined> {
+  return undefined
 }
 
 // ===== Image hashing & dedup =====
@@ -229,47 +222,48 @@ function hashDataUrlFallback(dataUrl: string): string {
  * 存储图片，若已存在（按 hash 去重）则跳过。
  * 返回 image id。
  */
-export async function storeImage(dataUrl: string, source: NonNullable<StoredImage['source']> = 'upload'): Promise<string> {
+export async function storeImage(
+  dataUrl: string,
+  source: NonNullable<StoredImage['source']> = 'upload',
+  taskId?: string
+): Promise<string> {
+  return (await storeImageDetailed(dataUrl, source, taskId)).id
+}
+
+export async function storeImageDetailed(
+  dataUrl: string,
+  source: NonNullable<StoredImage['source']> = 'upload',
+  taskId?: string
+): Promise<{ id: string; persisted: boolean; error?: string }> {
   if (typeof dataUrl === 'string' && /^https?:\/\//i.test(dataUrl)) {
-    return dataUrl
-  }
-  const id = await hashDataUrl(dataUrl)
-  const existing = await getImage(id)
-  if (!existing) {
-    const thumbnail = await safeCreateImageThumbnail(dataUrl)
-    await putImage({
-      id,
-      dataUrl,
-      createdAt: Date.now(),
-      source,
-      width: thumbnail.width,
-      height: thumbnail.height,
+    // 外部链接也交由后端统一存入 COS 桶
+    const res = await fetch('/api/images/store', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataUrl, source, taskId }),
+      credentials: 'include',
     })
-    if (thumbnail.thumbnailDataUrl) {
-      await putImageThumbnail({
-        id,
-        thumbnailDataUrl: thumbnail.thumbnailDataUrl,
-        width: thumbnail.width,
-        height: thumbnail.height,
-        thumbnailVersion: THUMBNAIL_VERSION,
-      })
-    }
-  } else if ((await getStoredImageThumbnail(id))?.thumbnailVersion !== THUMBNAIL_VERSION) {
-    const thumbnail = await safeCreateImageThumbnail(existing.dataUrl)
-    if (thumbnail.width && thumbnail.height && (existing.width !== thumbnail.width || existing.height !== thumbnail.height)) {
-      await putImage({ ...existing, width: thumbnail.width, height: thumbnail.height })
-    }
-    if (thumbnail.thumbnailDataUrl) {
-      await putImageThumbnail({
-        id,
-        thumbnailDataUrl: thumbnail.thumbnailDataUrl,
-        width: thumbnail.width,
-        height: thumbnail.height,
-        thumbnailVersion: THUMBNAIL_VERSION,
-      })
-    }
+    const json = await res.json()
+    if (json.success) return { id: json.data.id, persisted: json.data.id !== dataUrl }
+    return { id: dataUrl, persisted: false, error: json.error || 'Failed to store remote image' }
   }
-  return id
+
+  // 本地 base64 形式，优先在客户端生成缩略图，减小后端 CPU 运算
+  const thumbnail = await safeCreateImageThumbnail(dataUrl)
+  const res = await fetch('/api/images/store', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      dataUrl,
+      source,
+      thumbnailDataUrl: thumbnail.thumbnailDataUrl,
+      taskId,
+    }),
+    credentials: 'include',
+  })
+  const json = await res.json()
+  if (!json.success) throw new Error(json.error || 'Failed to store image')
+  return { id: json.data.id, persisted: true }
 }
 
 function loadImage(dataUrl: string): Promise<HTMLImageElement> {
