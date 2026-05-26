@@ -6,6 +6,8 @@ export interface ProviderSubmitResult {
 export interface ProviderPollingResult {
   status: 'pending' | 'success' | 'failed'
   images?: string[]
+  cost?: number | null
+  progress?: number | null
   error?: string
   raw: unknown
 }
@@ -20,7 +22,7 @@ export interface ProviderTaskInput {
   apiBaseUrl: string
   apiKey: string
   providerTaskId?: string | null
-  customProviderSnapshot?: Record<string, unknown> | null
+  inputImageUrls?: string[]
 }
 
 export interface ProviderAdapter {

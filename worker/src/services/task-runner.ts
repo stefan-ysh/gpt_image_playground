@@ -97,8 +97,8 @@ async function submitProviderTask(task: DbTask) {
 
     const immediateRaw =
       result.raw &&
-      typeof result.raw === 'object' &&
-      'immediateSuccess' in result.raw
+        typeof result.raw === 'object' &&
+        'immediateSuccess' in result.raw
         ? (result.raw as any)
         : null
 
@@ -174,8 +174,11 @@ async function pollProviderTask(task: DbTask) {
       await updateTaskStatus(task.id, 'succeeded_raw', {
         last_poll_at: Date.now(),
         provider_finished_at: Date.now(),
+        cost: result.cost ?? null,
         provider_result_raw: JSON.stringify({
           images: result.images || [],
+          cost: result.cost ?? null,
+          progress: result.progress ?? null,
           payload: result.raw,
         }),
         last_provider_payload: rawString,

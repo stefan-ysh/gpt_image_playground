@@ -1,7 +1,7 @@
-import { OpenAICompatibleProvider } from './openai-compatible.js'
+import { GptImage2AsyncProvider } from './gpt-image-2-async.js'
 
-const openaiCompatible = new OpenAICompatibleProvider()
+const gptImage2AsyncProvider = new GptImage2AsyncProvider()
 
 export function getProvider(_provider: string) {
-  return openaiCompatible
+  return gptImage2AsyncProvider
 }
