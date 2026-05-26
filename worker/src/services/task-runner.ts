@@ -62,6 +62,24 @@ async function toProviderTaskInput(task: DbTask) {
   }
 }
 
+function createActualParams(input: Awaited<ReturnType<typeof toProviderTaskInput>>) {
+  return {
+    model: input.apiModel || input.params.model || 'gpt-image-2',
+    prompt: input.prompt,
+    n: 1,
+    size: input.params.size || '1:1',
+    resolution: input.params.resolution || '2k',
+    official_fallback:
+      typeof input.params.official_fallback === 'boolean'
+        ? input.params.official_fallback
+        : false,
+    image_urls_count: input.inputImageUrls.length,
+    has_reference_images: input.inputImageUrls.length > 0,
+    provider: input.apiProvider,
+    api_mode: input.apiMode || null,
+  }
+}
+
 function isSubmitStatus(status: string) {
   return (
     status === 'created' ||
@@ -93,10 +111,12 @@ export async function runTask(task: DbTask) {
 async function submitProviderTask(task: DbTask) {
   const provider = getProvider(task.api_provider || 'custom')
   const input = await toProviderTaskInput(task)
+  const actualParams = createActualParams(input)
 
   await updateTaskStatus(task.id, 'submitting', {
     last_provider_error: null,
     provider_status: 'submitting',
+    actual_params: JSON.stringify(actualParams),
   })
   await notifyTaskUpdated(task.id, 'submitting')
 
@@ -106,8 +126,8 @@ async function submitProviderTask(task: DbTask) {
 
     const immediateRaw =
       result.raw &&
-        typeof result.raw === 'object' &&
-        'immediateSuccess' in result.raw
+      typeof result.raw === 'object' &&
+      'immediateSuccess' in result.raw
         ? (result.raw as any)
         : null
 
@@ -118,6 +138,7 @@ async function submitProviderTask(task: DbTask) {
         provider_result_raw: rawString,
         last_provider_payload: rawString,
         submitted_at: Date.now(),
+        actual_params: JSON.stringify(actualParams),
       })
 
       await notifyTaskUpdated(task.id, 'succeeded_raw')
@@ -131,6 +152,7 @@ async function submitProviderTask(task: DbTask) {
       last_provider_payload: rawString,
       poll_attempts: 0,
       next_poll_at: Date.now() + 10000,
+      actual_params: JSON.stringify(actualParams),
     })
 
     await notifyTaskUpdated(task.id, 'polling')
@@ -140,6 +162,7 @@ async function submitProviderTask(task: DbTask) {
       last_provider_error:
         error instanceof Error ? error.message : String(error),
       next_poll_at: Date.now() + 30000,
+      actual_params: JSON.stringify(actualParams),
     })
 
     await notifyTaskUpdated(task.id, 'submit_unknown')

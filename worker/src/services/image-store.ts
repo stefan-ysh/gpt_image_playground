@@ -3,7 +3,11 @@ import net from 'node:net'
 import { lookup } from 'node:dns/promises'
 import mime from 'mime'
 import { pool } from '../db/pool.js'
-import { uploadBufferToCos } from './cos-client.js'
+import {
+  extractCosKeyFromUrl,
+  readBufferFromCos,
+  uploadBufferToCos,
+} from './cos-client.js'
 
 const MAX_STORED_IMAGE_BYTES = 60 * 1024 * 1024
 const EXTERNAL_FETCH_TIMEOUT_MS = 15000
@@ -326,18 +330,12 @@ async function getExistingImage(id: string): Promise<{
   }
 }
 
-function isRelativeCosProxyPath(value: string) {
-  return value.startsWith('/api/files/cos/') || value.startsWith('uploads/')
+function guessContentTypeFromCosKey(key: string) {
+  return normalizeContentType(mime.getType(key) || 'image/png')
 }
 
-function normalizeRelativeCosUrl(value: string) {
-  if (value.startsWith('/api/files/cos/')) return value
-
-  if (value.startsWith('uploads/')) {
-    return `/api/files/cos/${value}`
-  }
-
-  return value
+function guessExtFromCosKey(key: string, contentType: string) {
+  return mime.getExtension(contentType) || key.split('.').pop() || 'png'
 }
 
 export async function readImageInput(dataUrl: string): Promise<{
@@ -355,12 +353,29 @@ export async function readImageInput(dataUrl: string): Promise<{
     return parsed
   }
 
-  if (/^https?:\/\//i.test(dataUrl)) {
-    return fetchExternalImage(dataUrl)
+  const cosKey = extractCosKeyFromUrl(dataUrl)
+
+  if (cosKey) {
+    const contentType = guessContentTypeFromCosKey(cosKey)
+    const buffer = await readBufferFromCos(cosKey)
+
+    if (buffer.byteLength <= 0) {
+      throw new Error('COS 图片内容为空')
+    }
+
+    if (buffer.byteLength > MAX_STORED_IMAGE_BYTES) {
+      throw new Error('COS 图片文件过大')
+    }
+
+    return {
+      buffer,
+      contentType,
+      ext: guessExtFromCosKey(cosKey, contentType),
+    }
   }
 
-  if (isRelativeCosProxyPath(dataUrl)) {
-    throw new Error('不能通过 image-store 重新转存相对 COS 路径，请使用 input-images 从 COS 读取')
+  if (/^https?:\/\//i.test(dataUrl)) {
+    return fetchExternalImage(dataUrl)
   }
 
   throw new Error('不支持的图片输入格式')
@@ -373,16 +388,6 @@ export async function storeImageForTask(
 
   if (!dataUrl || typeof dataUrl !== 'string') {
     throw new Error('缺少图片内容')
-  }
-
-  if (isRelativeCosProxyPath(dataUrl)) {
-    const normalized = normalizeRelativeCosUrl(dataUrl)
-
-    return {
-      id: normalized,
-      dataUrl: normalized,
-      thumbnailDataUrl: normalized,
-    }
   }
 
   const { buffer, contentType, ext } = await readImageInput(dataUrl)
