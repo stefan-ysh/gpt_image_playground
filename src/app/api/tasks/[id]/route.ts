@@ -1,153 +1,138 @@
-import { NextResponse } from 'next/server';
-import { requireCurrentUser } from '@/lib/db/auth';
-import { mysqlPool } from '@/lib/db/mysql';
-import { ensurePlaygroundSchema } from '@/lib/db/schema';
-import { handleApiError } from '@/lib/api-error';
-import { deleteCosObjects } from '@/lib/db/cos';
-import { collectTaskRowImageRefs } from '@/lib/db/task-images';
-import { RowDataPacket } from 'mysql2';
+import { NextResponse } from 'next/server'
+import { RowDataPacket } from 'mysql2'
+import { requireCurrentUser } from '@/lib/db/auth'
+import { mysqlPool } from '@/lib/db/mysql'
+import { ensurePlaygroundSchema } from '@/lib/db/schema'
+import { handleApiError } from '@/lib/api-error'
+import type { TaskRecord } from '@/types'
 
-export const runtime = 'nodejs';
+export const runtime = 'nodejs'
 
-function addTaskImageReferences(target: Set<string>, task: RowDataPacket) {
-  for (const ref of collectTaskRowImageRefs(task)) target.add(ref.imageId);
+function safeJsonParse<T>(value: unknown, fallback: T): T {
+  if (typeof value !== 'string' || !value) return fallback
+
+  try {
+    return JSON.parse(value) as T
+  } catch {
+    return fallback
+  }
 }
 
-function addAppStateImageReferences(target: Set<string>, value: unknown) {
-  if (!value || typeof value !== 'object') return;
-  const state = value as { inputImages?: unknown; galleryInputDraft?: { inputImages?: unknown } };
-  const addInputImages = (images: unknown) => {
-    if (!Array.isArray(images)) return;
-    for (const image of images) {
-      if (image && typeof image === 'object' && typeof (image as { id?: unknown }).id === 'string') {
-        target.add((image as { id: string }).id);
-      }
-    }
-  };
-  addInputImages(state.inputImages);
-  addInputImages(state.galleryInputDraft?.inputImages);
+function rowToTask(row: RowDataPacket): TaskRecord {
+  return {
+    id: row.id,
+    prompt: row.prompt,
+    params: safeJsonParse(row.params, {
+      size: 'auto',
+      resolution: '1k',
+      output_format: 'png',
+      output_compression: null,
+      moderation: 'auto',
+      n: 1,
+    }),
+
+    apiProvider: row.api_provider ?? undefined,
+    apiProfileId: row.api_profile_id ?? undefined,
+    apiProfileName: row.api_profile_name ?? undefined,
+    apiMode: row.api_mode ?? undefined,
+    apiModel: row.api_model ?? undefined,
+    apiProfileSnapshot: safeJsonParse(row.api_profile_snapshot, undefined),
+    customProviderSnapshot: safeJsonParse(row.custom_provider_snapshot, undefined),
+
+    falRequestId: row.fal_request_id ?? undefined,
+    falEndpoint: row.fal_endpoint ?? undefined,
+    falRecoverable: Boolean(row.fal_recoverable),
+    customTaskId: row.custom_task_id ?? undefined,
+    customRecoverable: Boolean(row.custom_recoverable),
+
+    providerTaskId: row.provider_task_id ?? null,
+    providerStatus: row.provider_status ?? null,
+    submitStatus: row.submit_status ?? null,
+    runAttempt: Number(row.run_attempt ?? 1),
+    pollAttempts: Number(row.poll_attempts ?? 0),
+    manualSyncAttempts: Number(row.manual_sync_attempts ?? 0),
+    lastPollAt: row.last_poll_at == null ? null : Number(row.last_poll_at),
+    nextPollAt: row.next_poll_at == null ? null : Number(row.next_poll_at),
+    submittedAt: row.submitted_at == null ? null : Number(row.submitted_at),
+    providerFinishedAt:
+      row.provider_finished_at == null ? null : Number(row.provider_finished_at),
+    externalTaskExpiresAt:
+      row.external_task_expires_at == null
+        ? null
+        : Number(row.external_task_expires_at),
+    workerId: row.worker_id ?? null,
+    lockedUntil: row.locked_until == null ? null : Number(row.locked_until),
+    lastProviderPayload: row.last_provider_payload ?? null,
+    lastProviderError: row.last_provider_error ?? null,
+    idempotencyKey: row.idempotency_key ?? null,
+    providerResultRaw: row.provider_result_raw ?? null,
+    copiedFromTaskId: row.copied_from_task_id ?? null,
+
+    actualParams: safeJsonParse(row.actual_params, undefined),
+    actualParamsByImage: safeJsonParse(row.actual_params_by_image, undefined),
+    revisedPromptByImage: safeJsonParse(row.revised_prompt_by_image, undefined),
+
+    inputImageIds: safeJsonParse(row.input_image_ids, []),
+    maskTargetImageId: row.mask_target_image_id ?? null,
+    maskImageId: row.mask_image_id ?? null,
+
+    outputImages: safeJsonParse(row.output_images, []),
+    outputImagesPending: safeJsonParse(row.output_images_pending, undefined),
+    streamPartialImageIds: safeJsonParse(row.stream_partial_image_ids, undefined),
+    rawImageUrls: safeJsonParse(row.raw_image_urls, undefined),
+    rawResponsePayload: row.raw_response_payload ?? undefined,
+
+    status: row.status,
+    error: row.error ?? null,
+    createdAt: Number(row.created_at),
+    finishedAt: row.finished_at == null ? null : Number(row.finished_at),
+    elapsed: row.elapsed == null ? null : Number(row.elapsed),
+    isFavorite: Boolean(row.is_favorite),
+    groupId: row.group_id ?? undefined,
+    ownerFingerprint: row.owner_fingerprint ?? undefined,
+    cost: row.cost == null ? undefined : Number(row.cost),
+  }
 }
 
-function getCosKey(value: unknown): string | null {
-  if (typeof value !== 'string' || !value) return null;
-  const apiPrefix = '/api/files/cos/';
-  if (value.startsWith(apiPrefix)) return decodeURIComponent(value.slice(apiPrefix.length));
-  const uploadIndex = value.indexOf('/uploads/');
-  if (uploadIndex >= 0) return decodeURIComponent(value.slice(uploadIndex + 1).split(/[?#]/)[0]);
-  if (value.startsWith('uploads/')) return decodeURIComponent(value.split(/[?#]/)[0]);
-  return null;
-}
-
-export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
+export async function GET(
+  _request: Request,
+  context: { params: Promise<{ id: string }> } | { params: { id: string } },
 ) {
   try {
-    const user = await requireCurrentUser();
-    await ensurePlaygroundSchema();
+    const user = await requireCurrentUser()
+    await ensurePlaygroundSchema()
 
-    const { id } = await params;
-    if (!id) {
-      return NextResponse.json({ success: false, error: '缺少任务 ID' }, { status: 400 });
-    }
+    const params = await Promise.resolve(context.params)
+    const taskId = params.id
 
-    const pool = await mysqlPool();
-    let protectedImageIds: string[] = [];
-    try {
-      const body = await request.json();
-      protectedImageIds = Array.isArray(body?.protectedImageIds)
-        ? body.protectedImageIds.filter((item: unknown): item is string => typeof item === 'string')
-        : [];
-    } catch {
-      protectedImageIds = [];
-    }
-
-    const [taskImageRows] = await pool.query<RowDataPacket[]>(
-      `SELECT image_id FROM playground_task_images WHERE task_id = ? AND user_id = ?`,
-      [id, user.id]
-    );
+    const pool = await mysqlPool()
 
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT input_image_ids, mask_target_image_id, mask_image_id, output_images, output_images_pending, stream_partial_image_ids
-       FROM playground_tasks WHERE id = ? AND user_id = ? LIMIT 1`,
-      [id, user.id]
-    );
+      `
+      SELECT *
+      FROM playground_tasks
+      WHERE id = ?
+        AND user_id = ?
+      LIMIT 1
+      `,
+      [taskId, user.id],
+    )
 
-    const candidateImageIds = new Set<string>(taskImageRows.map((row) => String(row.image_id)));
-    if (rows.length > 0) {
-      addTaskImageReferences(candidateImageIds, rows[0]);
+    if (rows.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: '任务不存在',
+        },
+        { status: 404 },
+      )
     }
 
-    if (candidateImageIds.size > 0) {
-      const referencedImageIds = new Set(protectedImageIds);
-      const [referencedRows] = await pool.query<RowDataPacket[]>(
-        `SELECT image_id FROM playground_task_images WHERE user_id = ? AND task_id <> ?`,
-        [user.id, id]
-      );
-      for (const row of referencedRows) referencedImageIds.add(String(row.image_id));
-
-      const [taskRows] = await pool.query<RowDataPacket[]>(
-        `SELECT input_image_ids, mask_target_image_id, mask_image_id, output_images, output_images_pending, stream_partial_image_ids
-         FROM playground_tasks WHERE user_id = ? AND id <> ?`,
-        [user.id, id]
-      );
-      for (const task of taskRows) addTaskImageReferences(referencedImageIds, task);
-
-      const [stateRows] = await pool.query<RowDataPacket[]>(
-        `SELECT value FROM playground_app_state WHERE id = ? AND user_id = ? LIMIT 1`,
-        ['gpt-image-playground', user.id]
-      );
-      if (stateRows.length > 0) {
-        try {
-          addAppStateImageReferences(referencedImageIds, JSON.parse(stateRows[0].value));
-        } catch {
-          // Ignore corrupted persisted state; protectedImageIds from the client still cover the active UI.
-        }
-      }
-
-      const removableImageIds = Array.from(candidateImageIds).filter((imageId) => !referencedImageIds.has(imageId));
-      if (removableImageIds.length > 0) {
-        await pool.query(
-          `DELETE FROM playground_image_owners WHERE user_id = ? AND image_id IN (?)`,
-          [user.id, removableImageIds]
-        );
-        const [ownerRows] = await pool.query<RowDataPacket[]>(
-          `SELECT image_id FROM playground_image_owners WHERE image_id IN (?)`,
-          [removableImageIds]
-        );
-        const stillOwnedImageIds = new Set(ownerRows.map((row) => String(row.image_id)));
-        const physicallyRemovableImageIds = removableImageIds.filter((imageId) => !stillOwnedImageIds.has(imageId));
-        if (physicallyRemovableImageIds.length === 0) {
-          await pool.query(
-            `DELETE FROM playground_tasks WHERE id = ? AND user_id = ?`,
-            [id, user.id]
-          );
-          return NextResponse.json({ success: true });
-        }
-        const [imageRows] = await pool.query<RowDataPacket[]>(
-          `SELECT i.id, i.data_url, t.thumbnail_data_url
-           FROM playground_images i
-           LEFT JOIN playground_thumbnails t ON t.id = i.id
-           WHERE i.id IN (?)`,
-          [physicallyRemovableImageIds]
-        );
-        const cosKeys = imageRows
-          .flatMap((image) => [getCosKey(image.data_url), getCosKey(image.thumbnail_data_url)])
-          .filter((key): key is string => Boolean(key));
-
-        await pool.query(`DELETE FROM playground_images WHERE id IN (?)`, [physicallyRemovableImageIds]);
-        await pool.query(`DELETE FROM playground_thumbnails WHERE id IN (?)`, [physicallyRemovableImageIds]);
-        await deleteCosObjects(cosKeys);
-      }
-    }
-
-    await pool.query(
-      `DELETE FROM playground_tasks WHERE id = ? AND user_id = ?`,
-      [id, user.id]
-    );
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      data: rowToTask(rows[0]),
+    })
   } catch (error) {
-    return handleApiError(error, '删除任务');
+    return handleApiError(error, '读取任务')
   }
 }

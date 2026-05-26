@@ -13,6 +13,7 @@ import type {
   TaskRecord,
   TaskGroup,
   UserInfo,
+  StoredImage
 } from './types'
 import { DEFAULT_PARAMS } from './types'
 import { DEFAULT_SETTINGS, getActiveApiProfile, getCustomProviderDefinition, normalizeSettings, validateApiProfile } from './lib/apiProfiles'
@@ -2743,13 +2744,13 @@ function formatExportResolution(value: unknown): string {
   return normalizeResolution(value, '1k')
 }
 
-type ExportImageFiles = Record<string, {
+type ExportImageFile = {
   path: string
-  createdAt?: number
-  source?: 'upload' | 'generated' | 'mask'
+  createdAt: number
+  source?: 'mask' | 'upload' | 'generated' | 'reference'
   width?: number
   height?: number
-}>
+}
 
 function getTaskExportRows(tasks: TaskRecord[], outputFiles: ExportImageFiles, referenceFiles: ExportImageFiles) {
   const maxOutputCount = Math.max(1, ...tasks.map((task) => task.outputImages?.length ?? 0))
