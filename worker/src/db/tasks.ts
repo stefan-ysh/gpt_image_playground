@@ -23,6 +23,13 @@ export interface DbTask {
   next_poll_at: number | null
   worker_id: string | null
   locked_until: number | null
+  input_image_ids: string | null
+  mask_target_image_id: string | null
+  mask_image_id: string | null
+  provider_result_raw: string | null
+  raw_image_urls: string | null
+  last_provider_payload: string | null
+  last_provider_error: string | null
 }
 
 export async function pickRunnableTasks(limit = 5) {
@@ -139,4 +146,32 @@ export async function getTaskById(taskId: string) {
   )
 
   return (rows as DbTask[])[0] ?? null
+}
+
+export async function getImageDataUrlsByIds(imageIds: string[]) {
+  if (imageIds.length === 0) return []
+
+  const placeholders = imageIds.map(() => '?').join(',')
+
+  const [rows] = await pool.query(
+    `
+    SELECT id, data_url
+    FROM playground_images
+    WHERE id IN (${placeholders})
+    `,
+    imageIds,
+  )
+
+  const map = new Map(
+    (rows as Array<{ id: string; data_url: string }>).map((row) => [
+      row.id,
+      row.data_url,
+    ]),
+  )
+
+  return imageIds
+    .map((id) => map.get(id))
+    .filter((url): url is string => {
+      return typeof url === 'string' && url.trim().length > 0
+    })
 }

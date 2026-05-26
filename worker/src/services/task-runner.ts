@@ -4,6 +4,7 @@ import { getProvider } from '../providers/index.js'
 import { getNextBackoffMs } from '../utils/backoff.js'
 import { notifyTaskUpdated } from './notifier.js'
 import { processSucceededRawTask } from './image-transfer.js'
+import { getImageDataUrlsByIds } from '../db/tasks.js'
 
 function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback
@@ -25,7 +26,7 @@ function getCustomProviderSnapshot(task: DbTask) {
   )
 }
 
-function toProviderTaskInput(task: DbTask) {
+async function toProviderTaskInput(task: DbTask) {
   const params = safeJsonParse<Record<string, unknown>>(task.params, {})
   const profile = getApiProfile(task)
 
@@ -43,17 +44,21 @@ function toProviderTaskInput(task: DbTask) {
         ? profile.api_key
         : ''
 
+  const inputImageIds = safeJsonParse<string[]>(task.input_image_ids, [])
+  const inputImageUrls = await getImageDataUrlsByIds(inputImageIds)
+
   return {
     id: task.id,
     prompt: task.prompt,
     params,
-    apiProvider: task.api_provider || 'openai',
+    apiProvider: task.api_provider || 'custom',
     apiModel: task.api_model,
     apiMode: task.api_mode,
     apiBaseUrl,
     apiKey,
     providerTaskId: task.provider_task_id,
     customProviderSnapshot: getCustomProviderSnapshot(task),
+    inputImageUrls,
   }
 }
 
@@ -83,7 +88,7 @@ export async function runTask(task: DbTask) {
 
 async function submitProviderTask(task: DbTask) {
   const provider = getProvider(task.api_provider || 'openai')
-  const input = toProviderTaskInput(task)
+  const input = await toProviderTaskInput(task)
 
   await updateTaskStatus(task.id, 'submitting', {
     last_provider_error: null,
@@ -136,7 +141,7 @@ async function submitProviderTask(task: DbTask) {
 
 async function pollProviderTask(task: DbTask) {
   const provider = getProvider(task.api_provider || 'openai')
-  const input = toProviderTaskInput(task)
+  const input = await toProviderTaskInput(task)
 
   try {
     const result = await provider.poll(input)
