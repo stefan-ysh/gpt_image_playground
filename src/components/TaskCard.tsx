@@ -680,7 +680,7 @@ export default function TaskCard({
                   tooltip="查询结果"
                   onClick={handleQueryResult}
                   disabled={isQueryingResult}
-                  className="inline-flex h-7 items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2 text-xs font-medium text-blue-600 transition hover:bg-blue-100 hover:text-blue-700 disabled:cursor-wait disabled:opacity-60 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300 dark:hover:bg-blue-500/15"
+                  className="p-1.5 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/30 text-gray-400 hover:text-blue-500 transition"
                 >
                   <svg
                     className={`w-3.5 h-3.5 ${isQueryingResult ? 'animate-spin' : ''}`}
@@ -690,7 +690,6 @@ export default function TaskCard({
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
-                  <span>{isQueryingResult ? '查询中' : '查询结果'}</span>
                 </TaskActionButton>
               )}
               {hasRemoteOutputImages && (
@@ -698,17 +697,44 @@ export default function TaskCard({
                   tooltip="重新转存图片"
                   onClick={handleRetryImageTransfer}
                   disabled={isTransferringImages}
-                  className="inline-flex h-7 items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 text-xs font-medium text-amber-700 transition hover:bg-amber-100 hover:text-amber-800 disabled:cursor-wait disabled:opacity-60 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/15"
+                  className="p-1.5 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/30 text-gray-400 hover:text-blue-500 transition"
                 >
                   <svg
-                    className={`w-3.5 h-3.5 ${isTransferringImages ? 'animate-spin' : ''}`}
+                    className={`w-3.5 h-3.5 ${isTransferringImages ? 'animate-pulse' : ''}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 4v12m0-12l4 4m-4-4L8 8" />
+                    {/* 服务器 */}
+                    <rect
+                      x="4"
+                      y="4"
+                      width="16"
+                      height="6"
+                      rx="2"
+                      strokeWidth={2}
+                    />
+                    <rect
+                      x="4"
+                      y="14"
+                      width="16"
+                      height="6"
+                      rx="2"
+                      strokeWidth={2}
+                    />
+
+                    {/* 指示灯 */}
+                    <circle cx="8" cy="7" r="1" fill="currentColor" />
+                    <circle cx="8" cy="17" r="1" fill="currentColor" />
+
+                    {/* 转存箭头 */}
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 10v4m0 0l-2-2m2 2l2-2"
+                    />
                   </svg>
-                  <span>{isTransferringImages ? '转存中' : '转存图片'}</span>
                 </TaskActionButton>
               )}
               {hasPendingOutputImages && (
@@ -716,17 +742,45 @@ export default function TaskCard({
                   tooltip="触发后台转存队列"
                   onClick={handleTriggerQueueProcess}
                   disabled={isTransferringImages}
-                  className="inline-flex h-7 items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 hover:text-emerald-800 disabled:cursor-wait disabled:opacity-60 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/15"
+                  className="p-1.5 rounded-md hover:bg-blue-50 dark:hover:bg-blue-950/30 text-gray-400 hover:text-blue-500 transition"
                 >
                   <svg
-                    className={`w-3.5 h-3.5 ${isTransferringImages ? 'animate-spin' : ''}`}
+                    className={`w-3.5 h-3.5 ${isTransferringImages ? 'animate-pulse' : ''}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v4m0 8v4m8-8h-4M4 12H0" />
+                    {/* 队列列表 */}
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 7h8M5 12h10M5 17h6"
+                    />
+
+                    {/* 后台处理齿轮 */}
+                    <circle
+                      cx="17"
+                      cy="16"
+                      r="3"
+                      strokeWidth={2}
+                    />
+
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M17 11v1M17 20v1M12 16h1M20 16h1M13.5 12.5l.7.7M19.8 18.8l.7.7M20.5 12.5l-.7.7M14.2 18.8l-.7.7"
+                    />
+
+                    {/* 触发箭头 */}
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M14 6l3 3-3 3"
+                    />
                   </svg>
-                  <span>{isTransferringImages ? '处理中' : '触发转存'}</span>
                 </TaskActionButton>
               )}
               {((task.status === 'error' && !isFalReconnecting) || settings.alwaysShowRetryButton) && (
