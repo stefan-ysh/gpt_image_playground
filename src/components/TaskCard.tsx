@@ -1,3 +1,4 @@
+import { canManualSyncTask, getTaskStatusDescription, getTaskStatusText, isSavingImageStatus, isTaskDone, isTaskFailed, isTaskRunning } from '@/lib/taskStatus'
 import { useEffect, useRef, useState } from 'react'
 
 import type {ReactNode} from 'react'
@@ -293,7 +294,7 @@ export default function TaskCard({
 
   const duration = (() => {
     let seconds: number
-    if (task.status === 'running' || task.falRecoverable || task.customRecoverable) {
+    if (isTaskRunning(task.status) || task.falRecoverable || task.customRecoverable) {
       seconds = Math.floor((now - task.createdAt) / 1000)
     } else if (task.elapsed != null) {
       seconds = Math.floor(task.elapsed / 1000)
@@ -307,7 +308,7 @@ export default function TaskCard({
   const showSwipeAction = swipeActionActive
   const isFalReconnecting = task.status === 'error' && task.falRecoverable
   const isCustomReconnecting = task.status === 'error' && task.customRecoverable
-  const showRunningTimer = task.status === 'running' || isFalReconnecting || isCustomReconnecting
+  const showRunningTimer = isTaskRunning(task.status) || isFalReconnecting || isCustomReconnecting
   const swipeBgClass = showSwipeAction
     ? swipeStartedSelected
       ? 'bg-gray-500 dark:bg-gray-600'
@@ -328,9 +329,14 @@ export default function TaskCard({
   const taskModel = task.apiModel || task.apiProfileSnapshot?.model || ''
   const showModel = Boolean(taskModel)
   const isInterrupted = task.status === 'error' && task.error === '已停止生成。'
-  const canQueryResult = task.status !== 'done' && (
-    (task.apiProvider === 'fal' && Boolean(task.falRequestId && task.falEndpoint)) ||
-    Boolean(task.customTaskId)
+  const canQueryResult =
+  canManualSyncTask(task.status) ||
+  (
+    !isTaskDone(task.status) &&
+    (
+      Boolean(task.falRequestId && task.falEndpoint) ||
+      Boolean(task.customTaskId)
+    )
   )
   const hasRemoteOutputImages = [
     ...(task.outputImages ?? []),
@@ -343,7 +349,12 @@ export default function TaskCard({
     if (isQueryingResult) return
     setIsQueryingResult(true)
     try {
-      const result = await queryTaskResult(task.id)
+      let result
+      if (canManualSyncTask(task.status)) {
+        result = await useStore.getState().syncTask(task.id)
+      } else {
+        result = await queryTaskResult(task.id)
+      }
       if (result === 'pending') {
         showToast('任务还在生成中，稍后可以再次查询', 'info')
       } else if (result === 'unsupported') {
@@ -434,7 +445,7 @@ export default function TaskCard({
         } ${
           !isSwiping ? 'transition-all' : 'transition-[box-shadow,border-color,background-color]'
         } ${
-          task.status === 'running'
+          isTaskRunning(task.status)
             ? 'border-blue-400 generating shadow-xs shadow-blue-500/10'
             : isSelected
             ? 'border-blue-500 shadow-md dark:shadow-blue-500/10 ring-4 ring-blue-500/10'
@@ -452,9 +463,9 @@ export default function TaskCard({
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchCancel}
-        draggable={task.status === 'done' && task.outputImages?.length > 0}
+        draggable={isTaskDone(task.status) && task.outputImages?.length > 0}
         onDragStart={(e) => {
-          if (task.status !== 'done' || !task.outputImages?.length) return;
+          if (!isTaskDone(task.status) || !task.outputImages?.length) return;
           const imageIds = task.outputImages;
           e.dataTransfer.setData('text/plain', imageIds.join(','));
           e.dataTransfer.effectAllowed = 'copy';
@@ -545,7 +556,7 @@ export default function TaskCard({
               </span>
             </div>
           )}
-          {task.status === 'error' && !isFalReconnecting && (
+          {isTaskFailed(task.status) && !isFalReconnecting && (
             <div className="flex flex-col items-center gap-1 px-2">
               <svg
                 className={`w-7 h-7 ${isInterrupted ? 'text-yellow-400' : 'text-red-400'}`}
@@ -800,7 +811,7 @@ export default function TaskCard({
                   </svg>
                 </TaskActionButton>
               )}
-              {((task.status === 'error' && !isFalReconnecting) || settings.alwaysShowRetryButton) && (
+              {((isTaskFailed(task.status) && !isFalReconnecting) || settings.alwaysShowRetryButton) && (
                 <TaskActionButton
                   tooltip="重试任务"
                   onClick={() => {

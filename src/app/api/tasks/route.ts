@@ -142,7 +142,22 @@ export async function POST(request: Request) {
     );
     const existingTask = existingRows[0];
 
-    if (!existingTask && task.status === 'running') {
+    if (
+      !existingTask &&
+      (
+        task.status === 'running' ||
+        task.status === 'created' ||
+        task.status === 'queued' ||
+        task.status === 'submitting' ||
+        task.status === 'submitted' ||
+        task.status === 'polling' ||
+        task.status === 'polling_retryable' ||
+        task.status === 'succeeded_raw' ||
+        task.status === 'storing_images' ||
+        task.status === 'transfer_pending' ||
+        task.status === 'submit_unknown'
+      )
+    ) {
       await assertDailyImageLimit(conn, user, task);
     }
 

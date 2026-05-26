@@ -1,3 +1,4 @@
+import { canManualSyncTask, getTaskStatusDescription, getTaskStatusText, isTaskDone, isTaskFailed, isTaskRunning } from '@/lib/taskStatus'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
@@ -88,7 +89,7 @@ export default function DetailModal() {
   }, [activeStreamPreviewSrc, detailTaskId, imageIndex])
 
   useEffect(() => {
-    const count = task?.status === 'running'
+    const count = task && isTaskRunning(task.status)
       ? streamPreviewItems.length
       : task?.outputImages?.length ?? 0
     if (count > 0 && imageIndex >= count) setImageIndex(count - 1)
@@ -565,7 +566,7 @@ export default function DetailModal() {
               )}
             </>
           )}
-          {(task.status === 'running' || isFalReconnecting) && (
+          {(isTaskRunning(task.status) || isFalReconnecting) && (
             <>
               <div className="absolute left-4 top-4 flex items-center gap-1 bg-black/50 text-white text-xs px-2 py-0.5 rounded backdrop-blur-sm font-mono">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -636,7 +637,7 @@ export default function DetailModal() {
               <p className="text-sm font-medium text-yellow-500">重连中</p>
             </div>
           )}
-          {task.status === 'error' && !isFalReconnecting && (
+          {isTaskFailed(task.status) && !isFalReconnecting && (
             <div className="w-full max-w-md px-4 text-center">
               <svg className="w-10 h-10 text-red-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
