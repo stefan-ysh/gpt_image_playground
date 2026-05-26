@@ -1,4 +1,6 @@
-import { useEffect } from 'react'
+'use client'
+
+import { useEffect, useLayoutEffect, useState } from 'react'
 import { initStore } from './store'
 import { useStore } from './store'
 import { buildSettingsFromUrlParams, clearUrlSettingParams, hasUrlSettingParams } from './lib/urlSettings'
@@ -15,22 +17,46 @@ import Toast from './components/Toast'
 import MaskEditorModal from './components/MaskEditorModal'
 import ImageContextMenu from './components/ImageContextMenu'
 import SupportPromptModal from './components/SupportPromptModal'
+import ShowcaseModal from './components/ShowcaseModal'
 import { useGlobalClickSuppression } from './lib/clickSuppression'
 import AuthGuard from './components/auth/AuthGuard'
 import Sidebar from './components/Sidebar'
 
 export default function App() {
   const setSettings = useStore((s) => s.setSettings)
+  const [showShowcase, setShowShowcase] = useState(false)
   useDockerApiUrlMigrationNotice()
   useGlobalClickSuppression()
 
+  useLayoutEffect(() => {
+    const root = document.documentElement
+    let frame = 0
+
+    const syncCssReady = () => {
+      const cssLoaded = getComputedStyle(root).getPropertyValue('--app-css-loaded').trim() === '1'
+      root.toggleAttribute('data-app-css-ready', cssLoaded)
+      if (!cssLoaded) frame = window.requestAnimationFrame(syncCssReady)
+    }
+
+    syncCssReady()
+    const interval = window.setInterval(syncCssReady, 250)
+    const failOpenTimer = window.setTimeout(() => {
+      root.setAttribute('data-app-css-ready', '')
+    }, 1500)
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame)
+      window.clearInterval(interval)
+      window.clearTimeout(failOpenTimer)
+      root.removeAttribute('data-app-css-ready')
+    }
+  }, [])
+
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search)
-    const nextSettings = buildSettingsFromUrlParams(useStore.getState().settings, searchParams)
-
-    setSettings(nextSettings)
 
     if (hasUrlSettingParams(searchParams)) {
+      const nextSettings = buildSettingsFromUrlParams(useStore.getState().settings, searchParams)
+      setSettings(nextSettings)
       clearUrlSettingParams(searchParams)
 
       const nextSearch = searchParams.toString()
@@ -56,13 +82,12 @@ export default function App() {
     <AuthGuard>
       <div className="flex h-screen w-screen overflow-hidden bg-gray-50 dark:bg-gray-900">
         <Sidebar />
-        
-        <div 
-          className="flex-1 flex flex-col min-w-0 h-full relative overflow-y-auto" 
-          data-home-main 
+        <div
+          className="flex-1 flex flex-col min-w-0 h-full relative overflow-y-auto"
+          data-home-main
           data-drag-select-surface
         >
-          <Header />
+          <Header onOpenShowcase={() => setShowShowcase(true)} />
           <main className="flex-1 pb-48 px-4 sm:px-6 lg:px-8">
             <div className="max-w-7xl mx-auto space-y-4 pt-4">
               <SearchBar />
@@ -77,6 +102,7 @@ export default function App() {
       <SettingsModal />
       <ConfirmDialog />
       <SupportPromptModal />
+      {showShowcase && <ShowcaseModal onClose={() => setShowShowcase(false)} />}
       <Toast />
       <MaskEditorModal />
       <ImageContextMenu />
