@@ -184,6 +184,10 @@ export async function ensurePlaygroundSchema() {
   pendingTransfersSql += `) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC;`;
   await pool.query(pendingTransfersSql);
 
+  // 清理曾经用于复杂配额方案的多余表。当前限额直接从 playground_tasks 统计成功图片数。
+  await pool.query("DROP TABLE IF EXISTS playground_daily_usage");
+  await pool.query("DROP TABLE IF EXISTS playground_quota_rules");
+
   // 6. 建立常用索引
   async function createIndex(sql: string) {
     try {
@@ -214,6 +218,20 @@ export async function ensurePlaygroundSchema() {
     }
   }
 
+  async function dropTaskColumn(name: string) {
+    try {
+      await pool.query(`ALTER TABLE playground_tasks DROP COLUMN IF EXISTS ${name}`);
+    } catch (e: any) {
+      try {
+        await pool.query(`ALTER TABLE playground_tasks DROP COLUMN ${name}`);
+      } catch (innerE: any) {
+        if (innerE.code !== 'ER_CANT_DROP_FIELD_OR_KEY' && innerE.errno !== 1091) {
+          console.error(`Failed to drop column ${name}:`, innerE);
+        }
+      }
+    }
+  }
+
   // 7. 动态升级 playground_tasks 表：保留任务恢复所需的 API 元数据和快照
   await addTaskColumn("api_provider VARCHAR(255)");
   await addTaskColumn("api_profile_id VARCHAR(255)");
@@ -228,6 +246,9 @@ export async function ensurePlaygroundSchema() {
   await addTaskColumn("raw_response_payload LONGTEXT");
   await addTaskColumn("cost DOUBLE DEFAULT NULL");
   await addTaskColumn("output_images_pending TEXT");
+  await dropTaskColumn("quota_date");
+  await dropTaskColumn("quota_reserved_cost");
+  await dropTaskColumn("quota_settled");
 
   try {
     const [taskRows] = await pool.query<any[]>(

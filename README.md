@@ -88,7 +88,12 @@ COS_SECRET_ID=your_cos_secret_id
 COS_SECRET_KEY=your_cos_secret_key
 COS_BUCKET=your-cos-bucket-12345
 COS_REGION=ap-shanghai
+
+# 每人每日成功生成图片数量限制，可按需调整
+PLAYGROUND_DAILY_IMAGE_LIMIT=60
 ```
+
+每日额度按北京时间（Asia/Shanghai）自然日统计。
 
 **2. 安装依赖并启动**
 

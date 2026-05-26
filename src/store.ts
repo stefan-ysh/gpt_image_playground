@@ -2106,7 +2106,13 @@ export async function submitTask(options: { allowFullMask?: boolean; useCurrentA
 
   const latestTasks = useStore.getState().tasks
   useStore.getState().setTasks([task, ...latestTasks])
-  await putTask(task)
+  try {
+    await putTask(task)
+  } catch (err) {
+    useStore.getState().setTasks(latestTasks)
+    showToast(err instanceof Error ? err.message : '提交任务失败', 'error')
+    return
+  }
   useStore.getState().showToast('任务已提交', 'success')
 
   if (settings.clearInputAfterSubmit) {
@@ -2546,7 +2552,13 @@ export async function retryTask(task: TaskRecord) {
 
   const latestTasks = useStore.getState().tasks
   useStore.getState().setTasks([newTask, ...latestTasks])
-  await putTask(newTask)
+  try {
+    await putTask(newTask)
+  } catch (err) {
+    useStore.getState().setTasks(latestTasks)
+    useStore.getState().showToast(err instanceof Error ? err.message : '重试任务失败', 'error')
+    return
+  }
 
   executeTask(taskId)
 }

@@ -1,4 +1,4 @@
-import type { Pool, RowDataPacket } from 'mysql2/promise';
+import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise';
 import crypto from 'node:crypto';
 
 type TaskImageRole = 'input' | 'mask-target' | 'mask' | 'output' | 'partial';
@@ -65,7 +65,7 @@ export function collectTaskRowImageRefs(row: RowDataPacket | Record<string, unkn
 }
 
 export async function syncTaskImageRefs(
-  pool: Pool,
+  pool: Pool | PoolConnection,
   taskId: string,
   userId: string,
   task: Record<string, unknown>,

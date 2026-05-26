@@ -4,8 +4,10 @@ import { mysqlPool } from '@/lib/db/mysql';
 import { ensurePlaygroundSchema } from '@/lib/db/schema';
 import { handleApiError } from '@/lib/api-error';
 import { RowDataPacket } from 'mysql2';
+import type { PoolConnection } from 'mysql2/promise';
 import { APIMART_PROVIDER_DEFINITION, APIMART_PROVIDER_ID } from '@/lib/apiProfiles';
 import { syncTaskImageRefs } from '@/lib/db/task-images';
+import { assertDailyImageLimit, isDailyImageLimitError } from '@/lib/db/daily-limit';
 
 export const runtime = 'nodejs';
 
@@ -116,6 +118,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  let conn: PoolConnection | null = null;
   try {
     const user = await requireCurrentUser();
     await ensurePlaygroundSchema();
@@ -126,7 +129,24 @@ export async function POST(request: Request) {
     }
 
     const pool = await mysqlPool();
-    await pool.query(
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+
+    const [existingRows] = await conn.query<RowDataPacket[]>(
+      `SELECT id
+       FROM playground_tasks
+       WHERE id = ? AND user_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [task.id, user.id]
+    );
+    const existingTask = existingRows[0];
+
+    if (!existingTask && task.status === 'running') {
+      await assertDailyImageLimit(conn, user, task);
+    }
+
+    await conn.query(
       `INSERT INTO playground_tasks (
         id, user_id, prompt, params, api_provider, api_profile_id, api_profile_name,
         api_mode, api_model, api_profile_snapshot, custom_provider_snapshot,
@@ -210,11 +230,27 @@ export async function POST(request: Request) {
       ]
     );
 
-    await syncTaskImageRefs(pool, task.id, user.id, task as Record<string, unknown>);
+    await syncTaskImageRefs(conn, task.id, user.id, task as Record<string, unknown>);
+    await conn.commit();
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (rollbackError) {
+        console.error('回滚任务保存事务失败:', rollbackError);
+      }
+    }
+    if (isDailyImageLimitError(error)) {
+      return NextResponse.json(
+        { success: false, error: error.message, code: error.code },
+        { status: error.status }
+      );
+    }
     console.error('保存任务出错:', error);
     return handleApiError(error, '保存任务');
-  }  
+  } finally {
+    conn?.release();
+  }
 }
