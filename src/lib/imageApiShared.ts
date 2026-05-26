@@ -1,4 +1,5 @@
 import type { AppSettings, TaskParams } from '../types'
+import { normalizeResolution } from './resolution'
 
 export const MIME_MAP: Record<string, string> = {
   png: 'image/png',
@@ -18,6 +19,7 @@ export interface CallApiOptions {
   maskDataUrl?: string
   onFalRequestEnqueued?: (request: { requestId: string; endpoint: string }) => void
   onCustomTaskEnqueued?: (task: { taskId: string }) => void
+  onCustomTaskProgress?: (info: { cost?: number }) => void
   onPartialImage?: (partial: { image: string; partialImageIndex?: number; requestIndex?: number }) => void
 }
 
@@ -32,6 +34,8 @@ export interface CallApiResult {
   revisedPrompts?: Array<string | undefined>
   /** API 返回的原始图片 HTTP URL（非 base64 时记录） */
   rawImageUrls?: string[]
+  /** 任务实际花费计费（如果服务商返回 cost 字段） */
+  cost?: number
 }
 
 export function isHttpUrl(value: unknown): value is string {
@@ -183,8 +187,8 @@ export function pickActualParams(source: unknown): Partial<TaskParams> {
   const actualParams: Partial<TaskParams> = {}
 
   if (typeof record.size === 'string') actualParams.size = record.size
-  if (record.quality === 'auto' || record.quality === 'low' || record.quality === 'medium' || record.quality === 'high') {
-    actualParams.quality = record.quality
+  if (typeof record.resolution === 'string') {
+    actualParams.resolution = normalizeResolution(record.resolution, '1k')
   }
   if (record.output_format === 'png' || record.output_format === 'jpeg' || record.output_format === 'webp') {
     actualParams.output_format = record.output_format

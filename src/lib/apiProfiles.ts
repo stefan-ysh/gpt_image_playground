@@ -16,9 +16,16 @@ import type {
 import { DEFAULT_STREAM_PARTIAL_IMAGES } from '../types'
 import { readRuntimeEnv } from './runtimeEnv'
 import { isApiProxyAvailable } from './devProxy'
+import { getActiveBaseUrl } from './env'
 
-const DEFAULT_BASE_URL = readRuntimeEnv(import.meta.env.VITE_DEFAULT_API_URL) || 'https://api.openai.com/v1'
-const DEFAULT_OPENAI_API_PROXY = readRuntimeEnv(import.meta.env.VITE_API_PROXY_AVAILABLE) === 'true'
+const DEFAULT_BASE_URL = readRuntimeEnv(
+  process.env.NEXT_PUBLIC_DEFAULT_BASE_URL || 'https://api.openai.com/v1'
+);
+
+const DEFAULT_OPENAI_API_PROXY =
+  readRuntimeEnv(
+    process.env.NEXT_PUBLIC_API_PROXY_AVAILABLE || process.env.VITE_API_PROXY_AVAILABLE
+  ) === 'true'
 export const DEFAULT_IMAGES_MODEL = 'gpt-image-2'
 export const DEFAULT_RESPONSES_MODEL = 'gpt-5.5'
 export const DEFAULT_FAL_BASE_URL = 'https://fal.run'
@@ -28,16 +35,20 @@ export const DEFAULT_API_TIMEOUT = 600
 
 export const APIMART_PROVIDER_ID = 'custom-dragoncode-gpt-image-2'
 
+export function getDefaultApiKey(): string {
+  return readRuntimeEnv(process.env.NEXT_PUBLIC_DEFAULT_API_KEY || '')
+}
+
 export const APIMART_PROVIDER_DEFINITION: CustomProviderDefinition = {
   id: APIMART_PROVIDER_ID,
-  name: 'APIMart GPT-Image-2',
+  name: 'GPT-Image-2',
   template: 'http-image',
   submit: {
     path: 'images/generations',
     method: 'POST',
     contentType: 'json',
     body: {
-      model: 'gpt-image-2',
+      model: '$profile.model',
       prompt: '$prompt',
       size: '$params.sizeRatio',
       resolution: '$params.resolution',
@@ -66,7 +77,7 @@ export const APIMART_PROVIDER_DEFINITION: CustomProviderDefinition = {
   },
 }
 
-const BUILT_IN_PROVIDER_IDS = new Set<ApiProvider>(['openai', 'fal'])
+const BUILT_IN_PROVIDER_IDS = new Set<ApiProvider>([APIMART_PROVIDER_ID])
 const DEFAULT_CUSTOM_PROVIDER_PATHS = {
   generationPath: 'images/generations',
   editPath: 'images/edits',
@@ -76,7 +87,7 @@ const DEFAULT_GENERATE_BODY = {
   model: '$profile.model',
   prompt: '$prompt',
   size: '$params.size',
-  quality: '$params.quality',
+  resolution: '$params.resolution',
   output_format: '$params.output_format',
   moderation: '$params.moderation',
   output_compression: '$params.output_compression',
@@ -309,176 +320,57 @@ export function normalizeCustomProviderDefinitions(input: unknown): CustomProvid
     .filter((item): item is CustomProviderDefinition => Boolean(item))
 }
 
-export function createDefaultOpenAIProfile(overrides: Partial<ApiProfile> = {}): ApiProfile {
-  return {
-    id: DEFAULT_OPENAI_PROFILE_ID,
-    name: '默认',
-    provider: 'openai',
-    baseUrl: DEFAULT_BASE_URL,
-    apiKey: '',
-    model: DEFAULT_IMAGES_MODEL,
-    timeout: DEFAULT_API_TIMEOUT,
-    apiMode: 'images',
-    codexCli: false,
-    apiProxy: DEFAULT_OPENAI_API_PROXY,
-    streamImages: true,
-    streamPartialImages: DEFAULT_STREAM_PARTIAL_IMAGES,
-    ...overrides,
-  }
-}
-
-export function createDefaultFalProfile(overrides: Partial<ApiProfile> = {}): ApiProfile {
-  return {
-    id: `fal-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-    name: '新配置',
-    provider: 'fal',
-    baseUrl: DEFAULT_FAL_BASE_URL,
-    apiKey: '',
-    model: DEFAULT_FAL_MODEL,
-    timeout: DEFAULT_API_TIMEOUT,
-    apiMode: 'images',
-    codexCli: false,
-    apiProxy: false,
-    streamImages: false,
-    streamPartialImages: DEFAULT_STREAM_PARTIAL_IMAGES,
-    ...overrides,
-  }
-}
-
 export function createDefaultAPIMartProfile(overrides: Partial<ApiProfile> = {}): ApiProfile {
-  const defaultApiKey = import.meta.env.VITE_DEFAULT_API_KEY || ''
-  const defaultBaseUrl = import.meta.env.VITE_DEFAULT_BASE_URL || 'https://api.apimart.ai/v1'
+  const defaultBaseUrl = getActiveBaseUrl()
   return {
     id: `apimart-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-    name: 'APIMart GPT-Image-2',
+    name: 'GPT-Image-2',
     provider: APIMART_PROVIDER_ID,
     baseUrl: defaultBaseUrl,
-    apiKey: defaultApiKey,
     model: 'gpt-image-2',
     timeout: DEFAULT_API_TIMEOUT,
     apiMode: 'images',
-    codexCli: false,
     apiProxy: isApiProxyAvailable(),
     streamImages: false,
     streamPartialImages: DEFAULT_STREAM_PARTIAL_IMAGES,
     ...overrides,
+    apiKey: getDefaultApiKey(),
   }
 }
 
 export function switchApiProfileProvider(profile: ApiProfile, provider: ApiProvider, customProvider?: CustomProviderDefinition): ApiProfile {
-  const providerDrafts = {
-    ...profile.providerDrafts,
-    [profile.provider]: {
-      baseUrl: profile.baseUrl,
-      model: profile.model,
-      apiMode: profile.apiMode,
-      codexCli: profile.codexCli,
-      apiProxy: profile.apiProxy,
-      responseFormatB64Json: profile.responseFormatB64Json,
-      streamImages: profile.streamImages,
-      streamPartialImages: profile.streamPartialImages,
-    },
-  }
-  const savedDraft = providerDrafts[provider]
-
-  if (provider === 'fal') {
-    return {
-      ...profile,
-      provider,
-      baseUrl: savedDraft?.baseUrl ?? DEFAULT_FAL_BASE_URL,
-      model: savedDraft?.model ?? DEFAULT_FAL_MODEL,
-      apiMode: savedDraft?.apiMode ?? 'images',
-      codexCli: false,
-      apiProxy: false,
-      responseFormatB64Json: savedDraft?.responseFormatB64Json,
-      streamImages: false,
-      streamPartialImages: savedDraft?.streamPartialImages ?? DEFAULT_STREAM_PARTIAL_IMAGES,
-      providerDrafts,
-    }
-  }
-
   if (customProvider) {
     const isAPIMart = customProvider.id === APIMART_PROVIDER_ID
-    const defaultBaseUrl = isAPIMart ? 'https://api.apimart.ai/v1' : DEFAULT_BASE_URL
-    const defaultModel = isAPIMart ? 'gpt-image-2' : DEFAULT_IMAGES_MODEL
-    const shouldUseOpenAIDefaults = profile.provider === 'fal' || isAPIMart
+    const defaultBaseUrl = getActiveBaseUrl()
+    const defaultModel = 'gpt-image-2'
     return {
       ...profile,
       provider: customProvider.id,
-      baseUrl: savedDraft?.baseUrl ?? (shouldUseOpenAIDefaults ? defaultBaseUrl : profile.baseUrl || defaultBaseUrl),
-      model: savedDraft?.model ?? (shouldUseOpenAIDefaults ? defaultModel : profile.model || defaultModel),
-      apiMode: savedDraft?.apiMode ?? 'images',
-      codexCli: false,
-      apiProxy: isAPIMart ? isApiProxyAvailable() : (savedDraft?.apiProxy ?? isApiProxyAvailable()),
-      responseFormatB64Json: savedDraft?.responseFormatB64Json,
-      streamImages: false,
-      streamPartialImages: savedDraft?.streamPartialImages ?? DEFAULT_STREAM_PARTIAL_IMAGES,
-      providerDrafts,
+      baseUrl: isAPIMart ? defaultBaseUrl : profile.baseUrl || defaultBaseUrl,
+      model: isAPIMart ? defaultModel : profile.model || defaultModel,
+      apiMode: 'images',
+      apiProxy: isApiProxyAvailable(),
     }
   }
 
   return {
     ...profile,
-    provider,
-    baseUrl: savedDraft?.baseUrl ?? DEFAULT_BASE_URL,
-    model: savedDraft?.model ?? DEFAULT_IMAGES_MODEL,
-    apiMode: savedDraft?.apiMode ?? profile.apiMode,
-    codexCli: savedDraft?.codexCli ?? profile.codexCli,
-    apiProxy: savedDraft?.apiProxy ?? DEFAULT_OPENAI_API_PROXY,
-    responseFormatB64Json: savedDraft?.responseFormatB64Json,
-    streamImages: savedDraft?.streamImages ?? (profile.provider === 'openai' ? profile.streamImages : true),
-    streamPartialImages: savedDraft?.streamPartialImages ?? (profile.provider === 'openai' ? profile.streamPartialImages : DEFAULT_STREAM_PARTIAL_IMAGES),
-    providerDrafts,
+    provider: APIMART_PROVIDER_ID,
+    baseUrl: getActiveBaseUrl(),
+    model: 'gpt-image-2',
+    apiMode: 'images',
+    apiProxy: isApiProxyAvailable(),
   }
-}
-
-function normalizeProviderDraft(input: unknown, provider: ApiProvider, customProviderIds: Set<string>): ApiProfileProviderDraft {
-  if (!isRecord(input)) return undefined
-  const fallback = provider === 'fal' ? createDefaultFalProfile() : createDefaultOpenAIProfile()
-  const baseUrl = typeof input.baseUrl === 'string' ? input.baseUrl : undefined
-  const model = typeof input.model === 'string' && input.model.trim() ? input.model : undefined
-  const apiMode = input.apiMode === 'responses' ? 'responses' : input.apiMode === 'images' ? 'images' : undefined
-  const knownProvider = provider === 'fal' || provider === 'openai' || customProviderIds.has(provider)
-  if (!knownProvider) return undefined
-
-  return {
-    baseUrl: provider === 'fal'
-      ? baseUrl?.trim().replace(/\/+$/, '') || DEFAULT_FAL_BASE_URL
-      : baseUrl,
-    model,
-    apiMode,
-    codexCli: typeof input.codexCli === 'boolean' ? input.codexCli : fallback.codexCli,
-    apiProxy: provider === APIMART_PROVIDER_ID ? isApiProxyAvailable() : (typeof input.apiProxy === 'boolean' ? input.apiProxy : fallback.apiProxy),
-    responseFormatB64Json: input.responseFormatB64Json === true ? true : undefined,
-    streamImages: typeof input.streamImages === 'boolean' ? input.streamImages : fallback.streamImages,
-    streamPartialImages: normalizeStreamPartialImages(input.streamPartialImages, fallback.streamPartialImages),
-  }
-}
-
-function normalizeProviderDrafts(input: unknown, customProviderIds: Set<string>): ApiProfile['providerDrafts'] {
-  if (!isRecord(input)) return undefined
-  const entries = Object.entries(input)
-    .map(([provider, draft]) => [provider, normalizeProviderDraft(draft, provider, customProviderIds)] as const)
-    .filter((entry): entry is [ApiProvider, NonNullable<ApiProfileProviderDraft>] => Boolean(entry[1]))
-
-  return entries.length ? Object.fromEntries(entries) : undefined
 }
 
 export function normalizeApiProfile(input: unknown, fallback?: Partial<ApiProfile>, customProviderIds = new Set<string>()): ApiProfile {
   const record = input && typeof input === 'object' ? input as Record<string, unknown> : {}
   const rawProvider = typeof record.provider === 'string' ? record.provider : ''
   const inputBaseUrl = typeof record.baseUrl === 'string' ? record.baseUrl : (fallback?.baseUrl ?? '')
-  const isAPIMart = inputBaseUrl.toLowerCase().includes('dragoncode.codes/gpt-image') || inputBaseUrl.toLowerCase().includes('api.apimart.ai')
+  const isAPIMart = inputBaseUrl.toLowerCase().includes('dragoncode.codes/gpt-image') || inputBaseUrl.toLowerCase().includes('api.apimart.ai') || rawProvider === APIMART_PROVIDER_ID
 
-  const provider: ApiProvider = isAPIMart
-    ? APIMART_PROVIDER_ID
-    : (rawProvider === 'fal' || customProviderIds.has(rawProvider) ? rawProvider : 'openai')
-
-  const defaults = provider === APIMART_PROVIDER_ID
-    ? createDefaultAPIMartProfile(fallback)
-    : (provider === 'fal' ? createDefaultFalProfile(fallback) : createDefaultOpenAIProfile(fallback))
-
-  const apiMode: ApiMode = record.apiMode === 'responses' ? 'responses' : 'images'
+  const provider: ApiProvider = isAPIMart ? APIMART_PROVIDER_ID : (rawProvider || APIMART_PROVIDER_ID)
+  const defaults = createDefaultAPIMartProfile(fallback)
   const resolvedBaseUrl = typeof record.baseUrl === 'string' ? record.baseUrl : defaults.baseUrl
 
   return {
@@ -486,23 +378,15 @@ export function normalizeApiProfile(input: unknown, fallback?: Partial<ApiProfil
     id: typeof record.id === 'string' && record.id.trim() ? record.id : defaults.id,
     name: typeof record.name === 'string' && record.name.trim() ? record.name : defaults.name,
     provider,
-    baseUrl: provider === 'fal' ? resolvedBaseUrl.trim().replace(/\/+$/, '') || DEFAULT_FAL_BASE_URL : resolvedBaseUrl,
-    apiKey: typeof record.apiKey === 'string' ? record.apiKey : defaults.apiKey,
+    baseUrl: resolvedBaseUrl,
+    apiKey: defaults.apiKey,
     model: typeof record.model === 'string' && record.model.trim() ? record.model : defaults.model,
     timeout: typeof record.timeout === 'number' && Number.isFinite(record.timeout) ? record.timeout : defaults.timeout,
-    apiMode,
-    codexCli: Boolean(record.codexCli),
-    apiProxy: (() => {
-      if (provider === APIMART_PROVIDER_ID) {
-        return isApiProxyAvailable()
-      }
-      let apiProxy = typeof record.apiProxy === 'boolean' ? record.apiProxy : defaults.apiProxy
-      return apiProxy
-    })(),
-    responseFormatB64Json: record.responseFormatB64Json === true ? true : undefined,
+    apiMode: 'images',
+    apiProxy: isApiProxyAvailable(),
     streamImages: typeof record.streamImages === 'boolean' ? record.streamImages : defaults.streamImages,
     streamPartialImages: normalizeStreamPartialImages(record.streamPartialImages, defaults.streamPartialImages),
-    providerDrafts: normalizeProviderDrafts(record.providerDrafts, customProviderIds),
+    providerDrafts: isRecord(record.providerDrafts) ? record.providerDrafts as ApiProfile['providerDrafts'] : defaults.providerDrafts,
   }
 }
 
@@ -532,59 +416,61 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
   }
 
   const customProviderIds = new Set(customProviders.map((provider) => provider.id))
-  const legacyProfile = createDefaultOpenAIProfile({
-    baseUrl: typeof record.baseUrl === 'string' ? record.baseUrl : DEFAULT_BASE_URL,
-    apiKey: typeof record.apiKey === 'string' ? record.apiKey : '',
-    model: typeof record.model === 'string' && record.model.trim() ? record.model : DEFAULT_IMAGES_MODEL,
+  const legacyProfile = createDefaultAPIMartProfile({
+    baseUrl: typeof record.baseUrl === 'string' ? record.baseUrl : getActiveBaseUrl(),
+    apiKey: getDefaultApiKey(),
+    model: typeof record.model === 'string' && record.model.trim() ? record.model : 'gpt-image-2',
     timeout: typeof record.timeout === 'number' && Number.isFinite(record.timeout) ? record.timeout : DEFAULT_API_TIMEOUT,
-    apiMode: record.apiMode === 'responses' ? 'responses' : 'images',
-    codexCli: Boolean(record.codexCli),
-    apiProxy: typeof record.apiProxy === 'boolean' ? record.apiProxy : DEFAULT_OPENAI_API_PROXY,
-    responseFormatB64Json: record.responseFormatB64Json === true ? true : undefined,
-    streamImages: typeof record.streamImages === 'boolean' ? record.streamImages : true,
-    streamPartialImages: normalizeStreamPartialImages(record.streamPartialImages),
+    apiProxy: isApiProxyAvailable(),
   })
   const profiles = Array.isArray(record.profiles) && record.profiles.length
     ? record.profiles.map((profile) => normalizeApiProfile(profile, undefined, customProviderIds))
     : [legacyProfile]
 
-  // 自动将内置的 APIMart Profile 追加到 profiles 列表中（如果不存在）
-  if (!profiles.some((p) => p.provider === APIMART_PROVIDER_ID)) {
-    profiles.push(createDefaultAPIMartProfile())
+  // 强力同步内置的 APIMart Profile 的 baseUrl 为当前最新环境变量地址，彻底解决浏览器 LocalStorage 缓存滞后导致模式切换不生效问题
+  const currentActiveBaseUrl = getActiveBaseUrl()
+  const syncedProfiles = profiles.map((p) => {
+    if (p.provider === APIMART_PROVIDER_ID) {
+      // 只有内置默认的 APIMart 或者是属于内置域名的 baseUrl，才进行强制热纠正
+      const isDefaultId = (p.id.startsWith('apimart-') && !p.id.includes('-url-')) || p.id.startsWith('dragoncode-') || p.id === 'default-apimart'
+      const isDefaultUrl = (p.baseUrl || '').toLowerCase().includes('dragoncode.codes') || (p.baseUrl || '').toLowerCase().includes('api.apimart.ai')
+      if (isDefaultId || isDefaultUrl) {
+        return { ...p, baseUrl: currentActiveBaseUrl }
+      }
+    }
+    return p
+  })
+
+  // 自动将内置的 APIMart Profile 追加 to profiles 列表中（如果不存在）
+  if (!syncedProfiles.some((p) => p.provider === APIMART_PROVIDER_ID)) {
+    syncedProfiles.push(createDefaultAPIMartProfile())
   }
 
-  const activeProfileId = typeof record.activeProfileId === 'string' && profiles.some((p) => p.id === record.activeProfileId)
+  const activeProfileId = typeof record.activeProfileId === 'string' && syncedProfiles.some((p) => p.id === record.activeProfileId)
     ? record.activeProfileId
-    : profiles[0].id
-  const active = profiles.find((p) => p.id === activeProfileId) ?? profiles[0]
+    : syncedProfiles[0].id
+  const active = syncedProfiles.find((p) => p.id === activeProfileId) ?? syncedProfiles[0]
 
   return {
     baseUrl: active.baseUrl,
     apiKey: active.apiKey,
     model: active.model,
     timeout: active.timeout,
-    apiMode: active.apiMode,
-    codexCli: active.codexCli,
+    apiMode: 'images',
     apiProxy: active.apiProxy,
     streamImages: active.streamImages,
     streamPartialImages: active.streamPartialImages,
     customProviders,
     providerOrder: Array.isArray(record.providerOrder) ? record.providerOrder.map(String) : undefined,
-    clearInputAfterSubmit: typeof record.clearInputAfterSubmit === 'boolean' ? record.clearInputAfterSubmit : false,
+    clearInputAfterSubmit: typeof record.clearInputAfterSubmit === 'boolean' ? record.clearInputAfterSubmit : true,
     persistInputOnRestart: typeof record.persistInputOnRestart === 'boolean' ? record.persistInputOnRestart : true,
-    reuseTaskApiProfileTemporarily: typeof record.reuseTaskApiProfileTemporarily === 'boolean' ? record.reuseTaskApiProfileTemporarily : false,
     alwaysShowRetryButton: typeof record.alwaysShowRetryButton === 'boolean' ? record.alwaysShowRetryButton : false,
     enterSubmit: typeof record.enterSubmit === 'boolean' ? record.enterSubmit : false,
     referenceImageEditAction: normalizeReferenceImageEditAction(record.referenceImageEditAction),
-    profiles,
+    profiles: syncedProfiles,
     activeProfileId,
     groups: Array.isArray(record.groups) ? record.groups : [],
     theme: record.theme === 'light' || record.theme === 'dark' || record.theme === 'system' ? record.theme : 'system',
-    webdavEnabled: typeof record.webdavEnabled === 'boolean' ? record.webdavEnabled : false,
-    webdavUrl: typeof record.webdavUrl === 'string' ? record.webdavUrl : '',
-    webdavUsername: typeof record.webdavUsername === 'string' ? record.webdavUsername : '',
-    webdavPassword: typeof record.webdavPassword === 'string' ? record.webdavPassword : '',
-    webdavLastSyncTime: typeof record.webdavLastSyncTime === 'number' ? record.webdavLastSyncTime : undefined,
   }
 }
 
@@ -666,16 +552,15 @@ export function importCustomProviderDefinitionFromJson(jsonText: string, existin
 export function getActiveApiProfile(settings: Partial<AppSettings> | unknown): ApiProfile {
   const record = settings && typeof settings === 'object' ? settings as Record<string, unknown> : {}
   const normalized = normalizeSettings(settings)
-  const profile = normalized.profiles.find((p) => p.id === normalized.activeProfileId) ?? normalized.profiles[0] ?? createDefaultOpenAIProfile()
+  const profile = normalized.profiles.find((p) => p.id === normalized.activeProfileId) ?? normalized.profiles[0] ?? createDefaultAPIMartProfile()
 
   return {
     ...profile,
     baseUrl: typeof record.baseUrl === 'string' ? record.baseUrl : profile.baseUrl,
-    apiKey: typeof record.apiKey === 'string' ? record.apiKey : profile.apiKey,
+    apiKey: profile.apiKey,
     model: typeof record.model === 'string' && record.model.trim() ? record.model : profile.model,
     timeout: typeof record.timeout === 'number' && Number.isFinite(record.timeout) ? record.timeout : profile.timeout,
-    apiMode: record.apiMode === 'images' || record.apiMode === 'responses' ? record.apiMode : profile.apiMode,
-    codexCli: typeof record.codexCli === 'boolean' ? record.codexCli : profile.codexCli,
+    apiMode: 'images',
     apiProxy: typeof record.apiProxy === 'boolean' ? record.apiProxy : profile.apiProxy,
     streamImages: typeof record.streamImages === 'boolean' ? record.streamImages : profile.streamImages,
     streamPartialImages: normalizeStreamPartialImages(record.streamPartialImages, profile.streamPartialImages),
@@ -684,42 +569,24 @@ export function getActiveApiProfile(settings: Partial<AppSettings> | unknown): A
 
 export function validateApiProfile(profile: ApiProfile): string | null {
   if (!profile.name.trim()) return '缺少名称'
-  if (profile.provider !== 'fal' && !profile.baseUrl.trim()) return '缺少 API URL'
-  if (!profile.apiKey.trim()) return '缺少 API Key'
+  if (!profile.baseUrl.trim()) return '缺少 API URL'
+  if (!profile.apiKey.trim()) return '缺少环境变量 NEXT_PUBLIC_DEFAULT_API_KEY'
   if (!profile.model.trim()) return '缺少模型 ID'
   return null
 }
 
-function isDefaultOpenAIProfile(profile: ApiProfile): boolean {
-  return profile.id === DEFAULT_OPENAI_PROFILE_ID &&
-    profile.name === '默认' &&
-    profile.provider === 'openai' &&
-    profile.baseUrl === DEFAULT_BASE_URL &&
-    profile.apiKey === '' &&
-    profile.model === DEFAULT_IMAGES_MODEL &&
-    profile.timeout === DEFAULT_API_TIMEOUT &&
-    profile.apiMode === 'images' &&
-    profile.codexCli === false &&
-    profile.apiProxy === DEFAULT_OPENAI_API_PROXY &&
-    profile.streamImages === true &&
-    profile.streamPartialImages === DEFAULT_STREAM_PARTIAL_IMAGES
-}
-
 function isDefaultAPIMartProfile(profile: ApiProfile): boolean {
-  const isCorrectBaseUrl = profile.baseUrl === 'https://api.apimart.ai/v1' || profile.baseUrl === 'https://api.apimart.ai/v1'
-  const isCorrectName = profile.name === 'APIMart GPT-Image-2' || profile.name === 'DragonCode GPT-Image-2'
+  const isCorrectBaseUrl = profile.baseUrl === getActiveBaseUrl()
+  const isCorrectName = profile.name === 'GPT-Image-2'
   return (profile.id.startsWith('apimart-') || profile.id.startsWith('dragoncode-')) &&
     isCorrectName &&
     profile.provider === APIMART_PROVIDER_ID &&
     isCorrectBaseUrl &&
-    profile.apiKey === '' &&
+    profile.apiKey === getDefaultApiKey() &&
     profile.model === 'gpt-image-2' &&
     profile.timeout === DEFAULT_API_TIMEOUT &&
     profile.apiMode === 'images' &&
-    profile.codexCli === false &&
-    profile.apiProxy === isApiProxyAvailable() &&
-    profile.streamImages === false &&
-    profile.streamPartialImages === DEFAULT_STREAM_PARTIAL_IMAGES
+    profile.apiProxy === isApiProxyAvailable()
 }
 
 function hasOnlyDefaultProfiles(settings: AppSettings): boolean {
@@ -727,24 +594,8 @@ function hasOnlyDefaultProfiles(settings: AppSettings): boolean {
     settings.customProviders[0].id === APIMART_PROVIDER_ID
 
   if (settings.profiles.length === 1) {
-    return settings.customProviders.length === 0 &&
-      settings.activeProfileId === DEFAULT_OPENAI_PROFILE_ID &&
-      isDefaultOpenAIProfile(settings.profiles[0])
+    return hasOnlyDragonCodeProvider && isDefaultAPIMartProfile(settings.profiles[0])
   }
-
-  if (settings.profiles.length === 2) {
-    const hasOpenAI = settings.profiles.some(isDefaultOpenAIProfile)
-    const hasDragonCode = settings.profiles.some(isDefaultAPIMartProfile)
-    const isActiveOpenAI = settings.activeProfileId === DEFAULT_OPENAI_PROFILE_ID
-    const activeProfile = settings.profiles.find(p => p.id === settings.activeProfileId)
-    const isActiveDragonCode = activeProfile ? (activeProfile.id.startsWith('apimart-') || activeProfile.id.startsWith('dragoncode-')) : false
-
-    return hasOnlyDragonCodeProvider &&
-      hasOpenAI &&
-      hasDragonCode &&
-      (isActiveOpenAI || isActiveDragonCode)
-  }
-
   return false
 }
 
@@ -761,7 +612,6 @@ function getApiProfileDedupKey(profile: ApiProfile): string {
   return JSON.stringify([
     profile.provider,
     profile.baseUrl.trim().replace(/\/+$/, '').toLowerCase(),
-    profile.apiKey.trim(),
     profile.model.trim(),
     profile.apiMode,
   ])
@@ -780,9 +630,6 @@ function hasEquivalentApiProfile(existingProfiles: ApiProfile[], importedProfile
   const dedupKey = getApiProfileDedupKey(importedProfile)
   if (existingProfiles.some((profile) => getApiProfileDedupKey(profile) === dedupKey)) return true
 
-  // LLM-generated imports intentionally omit API Key. Reuse an existing keyed profile
-  // when the provider, URL, model, and mode are otherwise identical.
-  if (importedProfile.apiKey.trim()) return false
   const connectionKey = getApiProfileConnectionKey(importedProfile)
   return existingProfiles.some((profile) => getApiProfileConnectionKey(profile) === connectionKey)
 }
@@ -845,7 +692,6 @@ export function findEquivalentApiProfile(
   const exact = normalized.profiles.find((item) => getApiProfileDedupKey(item) === dedupKey)
   if (exact) return exact
 
-  if (profile.apiKey.trim()) return null
   const connectionKey = getApiProfileConnectionKey(profile)
   return normalized.profiles.find((item) => getApiProfileConnectionKey(item) === connectionKey) ?? null
 }
@@ -886,26 +732,20 @@ export function mergeImportedSettings(currentSettings: Partial<AppSettings> | un
 }
 
 export const DEFAULT_SETTINGS: AppSettings = normalizeSettings({
-  baseUrl: DEFAULT_BASE_URL,
+  baseUrl: getActiveBaseUrl(),
   apiKey: '',
-  model: DEFAULT_IMAGES_MODEL,
+  model: 'gpt-image-2',
   timeout: DEFAULT_API_TIMEOUT,
   apiMode: 'images',
-  codexCli: false,
-  apiProxy: DEFAULT_OPENAI_API_PROXY,
-  streamImages: true,
+  apiProxy: isApiProxyAvailable(),
+  streamImages: false,
   streamPartialImages: DEFAULT_STREAM_PARTIAL_IMAGES,
   customProviders: [],
-  clearInputAfterSubmit: false,
+  clearInputAfterSubmit: true,
   persistInputOnRestart: true,
-  reuseTaskApiProfileTemporarily: false,
   alwaysShowRetryButton: false,
   enterSubmit: false,
   referenceImageEditAction: 'ask',
   groups: [],
   theme: 'system',
-  webdavEnabled: false,
-  webdavUrl: '',
-  webdavUsername: '',
-  webdavPassword: '',
 })

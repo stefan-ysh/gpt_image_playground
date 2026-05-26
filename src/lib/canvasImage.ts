@@ -1,5 +1,3 @@
-import { assertUsableMaskCoverage, classifyMaskAlpha, type MaskCoverage } from './mask'
-
 export interface ImageDimensions {
   width: number
   height: number
@@ -36,14 +34,6 @@ export async function imageDataUrlToPngBlob(dataUrl: string): Promise<Blob> {
   return canvasToBlob(canvas, 'image/png')
 }
 
-export async function maskDataUrlToPngBlob(maskDataUrl: string): Promise<Blob> {
-  const blob = await dataUrlToBlob(maskDataUrl, 'image/png')
-  if (blob.type !== 'image/png') {
-    return imageDataUrlToPngBlob(maskDataUrl)
-  }
-  return blob
-}
-
 export async function canvasToBlob(canvas: HTMLCanvasElement, type = 'image/png', quality?: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -53,60 +43,89 @@ export async function canvasToBlob(canvas: HTMLCanvasElement, type = 'image/png'
   })
 }
 
-export async function validateMaskMatchesImage(maskDataUrl: string, imageDataUrl: string): Promise<MaskCoverage> {
-  const [maskImage, sourceImage] = await Promise.all([loadImage(maskDataUrl), loadImage(imageDataUrl)])
-  if (maskImage.naturalWidth !== sourceImage.naturalWidth || maskImage.naturalHeight !== sourceImage.naturalHeight) {
-    throw new Error('遮罩尺寸与遮罩主图不一致，请重新绘制遮罩')
-  }
+export const DEFAULT_MASK_WORKING_MAX_EDGE = 1920
+export const MASK_WORKING_DIMENSION_MULTIPLE = 16
 
-  const canvas = document.createElement('canvas')
-  canvas.width = maskImage.naturalWidth
-  canvas.height = maskImage.naturalHeight
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })
-  if (!ctx) throw new Error('当前浏览器不支持 Canvas')
-  ctx.drawImage(maskImage, 0, 0)
-  const coverage = classifyMaskAlpha(ctx.getImageData(0, 0, canvas.width, canvas.height))
-  assertUsableMaskCoverage(coverage)
-  return coverage
+export interface MaskWorkingSize {
+  width: number
+  height: number
+  scale: number
+  wasResized: boolean
 }
 
-export async function createMaskPreviewDataUrl(imageDataUrl: string, maskDataUrl: string): Promise<string> {
-  const [image, mask] = await Promise.all([loadImage(imageDataUrl), loadImage(maskDataUrl)])
-  if (image.naturalWidth !== mask.naturalWidth || image.naturalHeight !== mask.naturalHeight) {
-    throw new Error('遮罩尺寸与遮罩主图不一致，请重新绘制遮罩')
+export interface PreparedMaskTarget extends MaskWorkingSize {
+  dataUrl: string
+  originalWidth: number
+  originalHeight: number
+  wasConvertedToPng: boolean
+}
+
+function floorToMultiple(value: number, multiple: number): number {
+  return Math.max(multiple, Math.floor(value / multiple) * multiple)
+}
+
+function localBlobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error ?? new Error('图片导出失败'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+export function calculateMaskWorkingSize(
+  width: number,
+  height: number,
+  maxEdge = DEFAULT_MASK_WORKING_MAX_EDGE,
+  multiple = MASK_WORKING_DIMENSION_MULTIPLE,
+): MaskWorkingSize {
+  const longestEdge = Math.max(width, height)
+  if (longestEdge <= maxEdge) {
+    return {
+      width,
+      height,
+      scale: 1,
+      wasResized: false,
+    }
+  }
+
+  const scale = maxEdge / longestEdge
+  return {
+    width: floorToMultiple(width * scale, multiple),
+    height: floorToMultiple(height * scale, multiple),
+    scale,
+    wasResized: true,
+  }
+}
+
+export async function prepareMaskTargetDataUrl(dataUrl: string): Promise<PreparedMaskTarget> {
+  const image = await loadImage(dataUrl)
+  const size = calculateMaskWorkingSize(image.naturalWidth, image.naturalHeight)
+  const isPng = /^data:image\/png(?:[;,]|$)/i.test(dataUrl)
+
+  if (!size.wasResized && isPng) {
+    return {
+      ...size,
+      dataUrl,
+      originalWidth: image.naturalWidth,
+      originalHeight: image.naturalHeight,
+      wasConvertedToPng: false,
+    }
   }
 
   const canvas = document.createElement('canvas')
-  canvas.width = image.naturalWidth
-  canvas.height = image.naturalHeight
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  canvas.width = size.width
+  canvas.height = size.height
+  const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('当前浏览器不支持 Canvas')
+  ctx.drawImage(image, 0, 0, size.width, size.height)
 
-  ctx.drawImage(image, 0, 0)
-
-  const maskCanvas = document.createElement('canvas')
-  maskCanvas.width = mask.naturalWidth
-  maskCanvas.height = mask.naturalHeight
-  const maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true })
-  if (!maskCtx) throw new Error('当前浏览器不支持 Canvas')
-  maskCtx.drawImage(mask, 0, 0)
-  const maskPixels = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height)
-
-  const overlay = ctx.createImageData(canvas.width, canvas.height)
-  for (let i = 0; i < maskPixels.data.length; i += 4) {
-    const editStrength = 255 - maskPixels.data[i + 3]
-    overlay.data[i] = 59
-    overlay.data[i + 1] = 130
-    overlay.data[i + 2] = 246
-    overlay.data[i + 3] = Math.round(editStrength * 0.58)
+  const blob = await canvasToBlob(canvas, 'image/png')
+  return {
+    ...size,
+    dataUrl: await localBlobToDataUrl(blob),
+    originalWidth: image.naturalWidth,
+    originalHeight: image.naturalHeight,
+    wasConvertedToPng: true,
   }
-
-  const overlayCanvas = document.createElement('canvas')
-  overlayCanvas.width = canvas.width
-  overlayCanvas.height = canvas.height
-  const overlayCtx = overlayCanvas.getContext('2d')
-  if (!overlayCtx) throw new Error('当前浏览器不支持 Canvas')
-  overlayCtx.putImageData(overlay, 0, 0)
-  ctx.drawImage(overlayCanvas, 0, 0)
-  return canvas.toDataURL('image/png')
 }

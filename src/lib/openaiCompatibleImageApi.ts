@@ -1,10 +1,12 @@
 import { DEFAULT_STREAM_PARTIAL_IMAGES } from '../types'
 
 import type { ApiProfile, CustomProviderDefinition, CustomProviderPollMapping, CustomProviderResultMapping, CustomProviderSubmitMapping, ImageApiResponse, ImageResponseItem, ResponsesApiResponse, ResponsesOutputItem, TaskParams } from '../types'
-import { dataUrlToBlob, imageDataUrlToPngBlob, maskDataUrlToPngBlob, createMaskPreviewDataUrl } from './canvasImage'
+import { dataUrlToBlob } from './canvasImage'
 import { APIMART_PROVIDER_ID, getCustomProviderDefinition } from './apiProfiles'
 import { formatImageRatio } from './size'
 import { buildApiUrl, readClientDevProxyConfig, shouldUseApiProxy, getProxyImageUrl } from './devProxy'
+import { getActiveBaseUrl } from './env'
+import { normalizeResolution } from './resolution'
 import {
   assertImageInputPayloadSize,
   assertMaskEditFileSize,
@@ -23,6 +25,10 @@ import {
 import type { CallApiOptions, CallApiResult } from './imageApiShared'
 
 const PROMPT_REWRITE_GUARD_PREFIX = 'Use the following text as the complete prompt. Do not rewrite it:'
+
+export type CustomQueuedImageQueryResult =
+  | { state: 'pending'; cost?: number }
+  | { state: 'success'; result: CallApiResult }
 
 function getStreamPartialImages(profile: ApiProfile): number {
   return profile.streamPartialImages ?? DEFAULT_STREAM_PARTIAL_IMAGES
@@ -87,6 +93,7 @@ function normalizeImageApiPayload(value: unknown): ImageApiResponse {
 function createRequestHeaders(profile: ApiProfile): Record<string, string> {
   return {
     Authorization: `Bearer ${profile.apiKey}`,
+    'X-Proxy-Target': profile.baseUrl,
   }
 }
 
@@ -190,16 +197,9 @@ function createResponsesImageTool(
     type: 'image_generation',
     action: isEdit ? 'edit' : 'generate',
     size: params.size,
+    resolution: normalizeResolution(params.resolution),
     output_format: params.output_format,
     moderation: params.moderation,
-  }
-
-  if (profile.streamImages) {
-    tool.partial_images = getStreamPartialImages(profile)
-  }
-
-  if (!profile.codexCli) {
-    tool.quality = params.quality
   }
 
   if (params.output_format !== 'png' && params.output_compression != null) {
@@ -324,7 +324,7 @@ function eventToImageResponseItem(event: Record<string, unknown>): ImageResponse
     b64_json: getStringValue(event, 'b64_json'),
     revised_prompt: getStringValue(event, 'revised_prompt'),
     size: getStringValue(event, 'size'),
-    quality: getStringValue(event, 'quality'),
+    resolution: getStringValue(event, 'resolution'),
     output_format: getStringValue(event, 'output_format'),
     output_compression: getNumberValue(event, 'output_compression'),
     moderation: getStringValue(event, 'moderation'),
@@ -457,9 +457,7 @@ async function callImagesApi(opts: CallApiOptions, profile: ApiProfile, customPr
 
 async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, customProvider?: CustomProviderDefinition | null): Promise<CallApiResult> {
   const { prompt: originalPrompt, params, inputImageDataUrls } = opts
-  const prompt = profile.codexCli
-    ? `${PROMPT_REWRITE_GUARD_PREFIX}\n${originalPrompt}`
-    : originalPrompt
+  const prompt = originalPrompt
   const isEdit = inputImageDataUrls.length > 0
   const mime = MIME_MAP[params.output_format] || 'image/png'
   const proxyConfig = readClientDevProxyConfig()
@@ -478,46 +476,30 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
       formData.append('model', profile.model)
       formData.append('prompt', prompt)
       formData.append('size', params.size)
+      formData.append('resolution', normalizeResolution(params.resolution))
       formData.append('output_format', params.output_format)
       formData.append('moderation', params.moderation)
-
-      if (!profile.codexCli) {
-        formData.append('quality', params.quality)
-      }
 
       if (params.output_format !== 'png' && params.output_compression != null) {
         formData.append('output_compression', String(params.output_compression))
       }
-      if (profile.streamImages) {
-        formData.append('partial_images', String(getStreamPartialImages(profile)))
-      }
+
 
       const imageBlobs: Blob[] = []
       for (let i = 0; i < inputImageDataUrls.length; i++) {
         const dataUrl = inputImageDataUrls[i]
-        const blob = opts.maskDataUrl && i === 0
-          ? await imageDataUrlToPngBlob(dataUrl)
-          : await dataUrlToBlob(dataUrl)
+        const blob = await dataUrlToBlob(dataUrl)
         imageBlobs.push(blob)
       }
 
-      const maskBlob = opts.maskDataUrl ? await maskDataUrlToPngBlob(opts.maskDataUrl) : null
-      if (opts.maskDataUrl) {
-        assertMaskEditFileSize('遮罩主图文件', imageBlobs[0]?.size ?? 0)
-        assertMaskEditFileSize('遮罩文件', maskBlob?.size ?? 0)
-      }
       assertImageInputPayloadSize(
-        imageBlobs.reduce((sum, blob) => sum + blob.size, 0) + (maskBlob?.size ?? 0),
+        imageBlobs.reduce((sum, blob) => sum + blob.size, 0),
       )
 
       for (let i = 0; i < imageBlobs.length; i++) {
         const blob = imageBlobs[i]
         const ext = blob.type.split('/')[1] || 'png'
         formData.append('image[]', blob, `input-${i + 1}.${ext}`)
-      }
-
-      if (maskBlob) {
-        formData.append('mask', maskBlob, 'mask.png')
       }
 
       response = await fetch(buildApiUrl(profile.baseUrl, paths.editPath, proxyConfig, useApiProxy), {
@@ -532,20 +514,15 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
         model: profile.model,
         prompt,
         size: params.size,
+        resolution: normalizeResolution(params.resolution),
         output_format: params.output_format,
         moderation: params.moderation,
-      }
-
-      if (!profile.codexCli) {
-        body.quality = params.quality
       }
 
       if (params.output_format !== 'png' && params.output_compression != null) {
         body.output_compression = params.output_compression
       }
-      if (profile.streamImages) {
-        body.partial_images = getStreamPartialImages(profile)
-      }
+
 
       response = await fetch(buildApiUrl(profile.baseUrl, paths.generationPath, proxyConfig, useApiProxy), {
         method: 'POST',
@@ -563,9 +540,7 @@ async function callImagesApiSingle(opts: CallApiOptions, profile: ApiProfile, cu
       throw new Error(await getApiErrorMessage(response))
     }
 
-    if (profile.streamImages && isEventStreamResponse(response)) {
-      return parseImagesApiStreamResponse(response, mime, opts.onPartialImage)
-    }
+
 
     return parseImagesApiResponse(await response.json() as ImageApiResponse, mime, controller.signal)
   } finally {
@@ -628,7 +603,7 @@ function resolveTemplateValue(value: unknown, context: Record<string, unknown>):
 }
 
 function createCustomProviderContext(opts: CallApiOptions, profile: ApiProfile) {
-  // 将像素尺寸（如 "3840x1648"）转换为比例字符串（如 "16:9"），供 APIMart 等 API 使用
+  // 将像素尺寸（如 "3840x1648"）转换为比例字符串（如 "16:9"），供按比例传参的异步服务商使用
   const rawSize = opts.params.size ?? ''
   let sizeRatio = rawSize
   if (rawSize && rawSize !== 'auto') {
@@ -641,21 +616,33 @@ function createCustomProviderContext(opts: CallApiOptions, profile: ApiProfile) 
     }
   }
 
+  // 最后一公里安全拦截：若发现相对路径，自动结合当前 origin 补全为公网绝对路径，确保 100% 物理可达
+  const safeDataUrls = opts.inputImageDataUrls.map((url) => {
+    if (typeof url === 'string' && url.startsWith('/') && typeof window !== 'undefined') {
+      return `${window.location.origin}${url}`
+    }
+    return url
+  })
+
+  const safeMaskDataUrl = opts.maskDataUrl && typeof opts.maskDataUrl === 'string' && opts.maskDataUrl.startsWith('/') && typeof window !== 'undefined'
+    ? `${window.location.origin}${opts.maskDataUrl}`
+    : opts.maskDataUrl
+
   return {
     profile,
     prompt: opts.prompt,
     params: {
       ...opts.params,
-      resolution: opts.params.quality === 'low' ? '1k' : opts.params.quality === 'high' ? '4k' : '2k',
+      resolution: normalizeResolution(opts.params.resolution),
       sizeRatio,
       official_fallback: false,
     },
     inputImages: {
-      dataUrls: opts.inputImageDataUrls.length ? opts.inputImageDataUrls : undefined,
-      count: opts.inputImageDataUrls.length,
+      dataUrls: safeDataUrls.length ? safeDataUrls : undefined,
+      count: safeDataUrls.length,
     },
     mask: {
-      dataUrl: opts.maskDataUrl,
+      dataUrl: safeMaskDataUrl,
     },
   }
 }
@@ -686,17 +673,13 @@ async function createCustomMultipartBody(mapping: CustomProviderSubmitMapping, o
   const needsInputImages = mapping.files?.some((file) => file.source === 'inputImages')
   const needsMask = mapping.files?.some((file) => file.source === 'mask')
   const imageBlobs: Blob[] = []
+  const maskBlob = needsMask && opts.maskDataUrl ? await dataUrlToBlob(opts.maskDataUrl) : null
   if (needsInputImages) {
     for (let i = 0; i < opts.inputImageDataUrls.length; i++) {
       const dataUrl = opts.inputImageDataUrls[i]
-      const blob = opts.maskDataUrl && i === 0 ? await imageDataUrlToPngBlob(dataUrl) : await dataUrlToBlob(dataUrl)
+      const blob = await dataUrlToBlob(dataUrl)
       imageBlobs.push(blob)
     }
-  }
-  const maskBlob = needsMask && opts.maskDataUrl ? await maskDataUrlToPngBlob(opts.maskDataUrl) : null
-  if (opts.maskDataUrl && (needsInputImages || needsMask)) {
-    assertMaskEditFileSize('遮罩主图文件', imageBlobs[0]?.size ?? 0)
-    assertMaskEditFileSize('遮罩文件', maskBlob?.size ?? 0)
   }
   assertImageInputPayloadSize(imageBlobs.reduce((sum, blob) => sum + blob.size, 0) + (maskBlob?.size ?? 0))
 
@@ -730,11 +713,16 @@ async function extractCustomImages(payload: unknown, result: CustomProviderResul
       }
     }
     if (imageUrls.length > 0) {
-      // 使用 Promise.all 并行下载多张图片以大幅缩短生成后的 loading 等待时间
+      // 使用 Promise.all 并行下载多张图片以大幅缩短生成后的 loading 等待时间，如果下载失败或跨域则优雅退化，保留原始 HTTP 链接让后端中转
       const downloaded = await Promise.all(
-        imageUrls.map((url) => {
-          const proxyUrl = getProxyImageUrl(url, profile)
-          return fetchImageUrlAsDataUrl(proxyUrl, mime, signal)
+        imageUrls.map(async (url) => {
+          try {
+            const proxyUrl = getProxyImageUrl(url, profile)
+            return await fetchImageUrlAsDataUrl(proxyUrl, mime, signal)
+          } catch (err) {
+            console.warn('本地获取图片 dataUrl 失败，优雅退化使用原始 HTTP 链接:', err)
+            return url
+          }
         })
       )
       images.push(...downloaded)
@@ -798,10 +786,12 @@ async function pollCustomTaskResult(
   taskId: string,
   mime: string,
   signal?: AbortSignal,
+  onProgress?: (info: { cost?: number }) => void,
 ): Promise<CallApiResult> {
   const proxyConfig = readClientDevProxyConfig()
   const requestHeaders = createRequestHeaders(profile)
   let isFirstPoll = true
+  let finalTaskPayload: unknown = null
 
   while (true) {
     if (isFirstPoll) {
@@ -829,6 +819,14 @@ async function pollCustomTaskResult(
       }
 
       taskPayload = await taskResponse.json()
+
+      const costVal = getByPath(taskPayload, 'data.cost') ?? getByPath(taskPayload, 'cost')
+      if (costVal != null) {
+        const parsedCost = typeof costVal === 'number' ? costVal : Number(costVal)
+        if (!isNaN(parsedCost)) {
+          onProgress?.({ cost: parsedCost })
+        }
+      }
     } catch (err) {
       if (!signal?.aborted && isRecoverablePollingError(err)) continue
       throw err
@@ -840,10 +838,76 @@ async function pollCustomTaskResult(
       throw new Error(typeof message === 'string' && message.trim() ? message : '异步任务失败')
     }
     if (state === 'success') {
-      // 提取图片失败属于不可恢复的错误（任务状态已经为成功，继续轮询状态无意义），应当直接抛出以便在 UI 上即时给出错误反馈，避免进入轮询重试死循环
-      return await extractCustomImages(taskPayload, poll.result, mime, profile, signal)
+      // 成功后立即跳出循环，提取图片错误独立在循环外进行，避免进入轮询重试死循环
+      finalTaskPayload = taskPayload
+      break
     }
   }
+
+  // 循环外部提取图片：
+  const res = await extractCustomImages(finalTaskPayload, poll.result, mime, profile, signal)
+  const costVal = getByPath(finalTaskPayload, 'data.cost') ?? getByPath(finalTaskPayload, 'cost')
+  if (typeof costVal === 'number') {
+    res.cost = costVal
+  } else if (typeof costVal === 'string' && !isNaN(Number(costVal))) {
+    res.cost = Number(costVal)
+  }
+  return res
+}
+
+async function fetchCustomTaskPayload(
+  profile: ApiProfile,
+  poll: CustomProviderPollMapping,
+  taskId: string,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  const proxyConfig = readClientDevProxyConfig()
+  const requestHeaders = createRequestHeaders(profile)
+  const taskPath = appendQuery(buildTaskPath(poll.path, taskId), poll.query)
+  const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig, profile.provider, profile.baseUrl)
+  const taskResponse = await fetch(buildApiUrl(profile.baseUrl, taskPath, proxyConfig, useApiProxy), {
+    method: poll.method ?? 'GET',
+    headers: requestHeaders,
+    cache: 'no-store',
+    signal,
+  })
+
+  if (!taskResponse.ok) throw new Error(await getApiErrorMessage(taskResponse))
+  return taskResponse.json()
+}
+
+function readCustomTaskCost(payload: unknown): number | undefined {
+  const costVal = getByPath(payload, 'data.cost') ?? getByPath(payload, 'cost')
+  if (costVal == null) return undefined
+  const parsedCost = typeof costVal === 'number' ? costVal : Number(costVal)
+  return Number.isFinite(parsedCost) ? parsedCost : undefined
+}
+
+export async function queryCustomQueuedImageResult(
+  profile: ApiProfile,
+  customProvider: CustomProviderDefinition,
+  taskId: string,
+  params: TaskParams,
+  onProgress?: (info: { cost?: number }) => void,
+): Promise<CustomQueuedImageQueryResult> {
+  if (!customProvider.poll) throw new Error('自定义异步任务缺少 poll 配置')
+
+  const poll = customProvider.poll
+  const payload = await fetchCustomTaskPayload(profile, poll, taskId)
+  const cost = readCustomTaskCost(payload)
+  if (cost != null) onProgress?.({ cost })
+
+  const state = getTaskState(payload, poll)
+  if (state === 'failure') {
+    const message = getByPath(payload, poll.errorPath) || getByPath(payload, 'message') || getByPath(payload, 'data.fail_reason') || getByPath(payload, 'error.message')
+    throw new Error(typeof message === 'string' && message.trim() ? message : '异步任务失败')
+  }
+  if (state === 'pending') return { state, cost }
+
+  const mime = MIME_MAP[params.output_format] || 'image/png'
+  const result = await extractCustomImages(payload, poll.result, mime, profile)
+  if (cost != null) result.cost = cost
+  return { state, result }
 }
 
 export async function getCustomQueuedImageResult(
@@ -851,22 +915,15 @@ export async function getCustomQueuedImageResult(
   customProvider: CustomProviderDefinition,
   taskId: string,
   params: TaskParams,
+  onProgress?: (info: { cost?: number }) => void,
 ): Promise<CallApiResult> {
   if (!customProvider.poll) throw new Error('自定义异步任务缺少 poll 配置')
   const mime = MIME_MAP[params.output_format] || 'image/png'
-  return pollCustomTaskResult(profile, customProvider.poll, taskId, mime)
+  return pollCustomTaskResult(profile, customProvider.poll, taskId, mime, undefined, onProgress)
 }
 
 async function callCustomHttpImageApiSingle(opts: CallApiOptions, profile: ApiProfile, customProvider: CustomProviderDefinition): Promise<CallApiResult> {
-  let activeOpts = opts
-  if (opts.maskDataUrl && opts.inputImageDataUrls.length > 0) {
-    const mergedDataUrl = await createMaskPreviewDataUrl(opts.inputImageDataUrls[0], opts.maskDataUrl)
-    activeOpts = {
-      ...opts,
-      inputImageDataUrls: [mergedDataUrl, ...opts.inputImageDataUrls.slice(1)],
-      maskDataUrl: undefined,
-    }
-  }
+  const activeOpts = opts
 
   const { params, inputImageDataUrls } = activeOpts
   const isEdit = inputImageDataUrls.length > 0
@@ -891,7 +948,7 @@ async function callCustomHttpImageApiSingle(opts: CallApiOptions, profile: ApiPr
       clearTimeout(timeoutId)
       timeoutId = null
     }
-    return pollCustomTaskResult(profile, customProvider.poll, taskId, mime, controller.signal)
+    return pollCustomTaskResult(profile, customProvider.poll, taskId, mime, controller.signal, opts.onCustomTaskProgress)
   } finally {
     if (timeoutId) clearTimeout(timeoutId)
   }
@@ -930,9 +987,7 @@ async function callResponsesImageApiSingle(opts: CallApiOptions, profile: ApiPro
       tools: [createResponsesImageTool(params, inputImageDataUrls.length > 0, profile, opts.maskDataUrl)],
       tool_choice: 'required',
     }
-    if (profile.streamImages) {
-      body.stream = true
-    }
+
 
     const response = await fetch(buildApiUrl(profile.baseUrl, 'responses', proxyConfig, useApiProxy), {
       method: 'POST',
@@ -949,9 +1004,7 @@ async function callResponsesImageApiSingle(opts: CallApiOptions, profile: ApiPro
       throw new Error(await getApiErrorMessage(response))
     }
 
-    if (profile.streamImages && isEventStreamResponse(response)) {
-      return parseResponsesApiStreamResponse(response, mime, opts.onPartialImage)
-    }
+
 
     const payload = await response.json() as ResponsesApiResponse
     const imageResults = parseResponsesImageResults(payload, mime)
@@ -979,13 +1032,13 @@ export async function uploadLocalImage(dataUrl: string, profile: ApiProfile): Pr
   const proxyConfig = readClientDevProxyConfig()
   const useApiProxy = shouldUseApiProxy(profile.apiProxy, proxyConfig, profile.provider, profile.baseUrl)
 
-  let uploadBaseUrl = 'https://api.apimart.ai/v1'
+  let uploadBaseUrl = getActiveBaseUrl()
   if (profile.baseUrl) {
     try {
       const urlObj = new URL(profile.baseUrl)
       if (urlObj.pathname.includes('/v1')) {
         const idx = urlObj.pathname.indexOf('/v1')
-        uploadBaseUrl = `${urlObj.origin}${urlObj.pathname.slice(0, idx + 3)}`
+        uploadBaseUrl = `${urlObj.origin}${urlObj.pathname.slice(0, idx)}`
       }
     } catch {
       // ignore
@@ -997,6 +1050,7 @@ export async function uploadLocalImage(dataUrl: string, profile: ApiProfile): Pr
     method: 'POST',
     headers: {
       Authorization: `Bearer ${profile.apiKey}`,
+      'X-Proxy-Target': uploadBaseUrl,
     },
     body: formData,
   })

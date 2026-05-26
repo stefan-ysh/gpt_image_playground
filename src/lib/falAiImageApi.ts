@@ -32,10 +32,6 @@ async function mapFalImageSize(size: string): Promise<{ width: number; height: n
   return DEFAULT_FAL_IMAGE_SIZE
 }
 
-function mapFalQuality(quality: TaskParams['quality']): 'low' | 'medium' | 'high' {
-  return quality === 'auto' ? 'high' : quality
-}
-
 function configureFal(profile: ApiProfile) {
   const baseUrl = profile.baseUrl.trim().replace(/\/+$/, '') || DEFAULT_FAL_BASE_URL
   const config: Parameters<typeof fal.config>[0] = {
@@ -51,17 +47,29 @@ async function createFalRequestInput(opts: CallApiOptions): Promise<Record<strin
   const input: Record<string, unknown> = {
     prompt: opts.prompt,
     image_size: isEdit && opts.params.size === 'auto' ? 'auto' : await mapFalImageSize(opts.params.size),
-    quality: mapFalQuality(opts.params.quality),
+    resolution: opts.params.resolution,
     num_images: Math.min(4, Math.max(1, opts.params.n || 1)),
     output_format: opts.params.output_format,
   }
 
+  // 最后一公里安全拦截：若发现相对路径，自动结合当前 origin 补全为公网绝对路径，确保 100% 物理可达
+  const safeDataUrls = opts.inputImageDataUrls.map((url) => {
+    if (typeof url === 'string' && url.startsWith('/') && typeof window !== 'undefined') {
+      return `${window.location.origin}${url}`
+    }
+    return url
+  })
+
+  const safeMaskDataUrl = opts.maskDataUrl && typeof opts.maskDataUrl === 'string' && opts.maskDataUrl.startsWith('/') && typeof window !== 'undefined'
+    ? `${window.location.origin}${opts.maskDataUrl}`
+    : opts.maskDataUrl
+
   if (isEdit) {
-    input.image_urls = opts.inputImageDataUrls
+    input.image_urls = safeDataUrls
   }
 
-  if (opts.maskDataUrl) {
-    input.mask_url = opts.maskDataUrl
+  if (safeMaskDataUrl) {
+    input.mask_url = safeMaskDataUrl
   }
 
   return input

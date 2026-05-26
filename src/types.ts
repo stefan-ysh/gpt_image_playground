@@ -1,3 +1,5 @@
+import type { ImageResolution } from './lib/resolution'
+
 // ===== 设置 =====
 
 export type ApiMode = 'images' | 'responses'
@@ -63,12 +65,10 @@ export interface ApiProfile {
   model: string
   timeout: number
   apiMode: ApiMode
-  codexCli: boolean
   apiProxy: boolean
-  responseFormatB64Json?: boolean
-  streamImages?: boolean
-  streamPartialImages?: number
-  providerDrafts?: Partial<Record<ApiProvider, Partial<Pick<ApiProfile, 'baseUrl' | 'model' | 'apiMode' | 'codexCli' | 'apiProxy' | 'responseFormatB64Json' | 'streamImages' | 'streamPartialImages'>>>>
+  streamImages: boolean
+  streamPartialImages: number
+  providerDrafts?: Partial<Record<ApiProvider, Partial<ApiProfile>>>
 }
 
 export interface TaskGroup {
@@ -84,15 +84,13 @@ export interface AppSettings {
   model: string
   timeout: number
   apiMode: ApiMode
-  codexCli: boolean
   apiProxy: boolean
-  streamImages?: boolean
-  streamPartialImages?: number
+  streamImages: boolean
+  streamPartialImages: number
   customProviders: CustomProviderDefinition[]
   providerOrder?: string[]
   clearInputAfterSubmit: boolean
   persistInputOnRestart: boolean
-  reuseTaskApiProfileTemporarily: boolean
   alwaysShowRetryButton: boolean
   enterSubmit: boolean
   referenceImageEditAction: ReferenceImageEditAction
@@ -100,18 +98,13 @@ export interface AppSettings {
   activeProfileId: string
   groups?: TaskGroup[]
   theme: 'light' | 'dark' | 'system'
-  webdavEnabled: boolean
-  webdavUrl: string
-  webdavUsername: string
-  webdavPassword: string
-  webdavLastSyncTime?: number
 }
 
 // ===== 任务参数 =====
 
 export interface TaskParams {
   size: string
-  quality: 'auto' | 'low' | 'medium' | 'high'
+  resolution: ImageResolution
   output_format: 'png' | 'jpeg' | 'webp'
   output_compression: number | null
   moderation: 'auto' | 'low'
@@ -120,7 +113,7 @@ export interface TaskParams {
 
 export const DEFAULT_PARAMS: TaskParams = {
   size: 'auto',
-  quality: 'auto',
+  resolution: '1k',
   output_format: 'png',
   output_compression: null,
   moderation: 'auto',
@@ -134,12 +127,8 @@ export interface InputImage {
   id: string
   /** data URL，用于预览 */
   dataUrl: string
-}
-
-export interface MaskDraft {
-  targetImageId: string
-  maskDataUrl: string
-  updatedAt: number
+  /** 参考图来源标记：由遮罩编辑器生成时视为局部重绘输入 */
+  editSource?: 'mask'
 }
 
 // ===== 任务记录 =====
@@ -160,6 +149,10 @@ export interface TaskRecord {
   apiMode?: ApiMode
   /** 生成时使用的模型 ID */
   apiModel?: string
+  /** 生成时使用的 API 配置快照，用于配置被改名/删除后继续查询异步结果 */
+  apiProfileSnapshot?: ApiProfile
+  /** 生成时使用的自定义服务商配置快照 */
+  customProviderSnapshot?: CustomProviderDefinition
   /** fal.ai 队列请求 ID，用于连接断开后的结果恢复 */
   falRequestId?: string
   /** fal.ai 队列 endpoint，用于连接断开后的状态和结果查询 */
@@ -182,6 +175,8 @@ export interface TaskRecord {
   maskImageId?: string | null
   /** 输出图片的 image store id 列表 */
   outputImages: string[]
+  /** 已生成但尚未成功转存到自有存储的临时图片 URL */
+  outputImagesPending?: string[]
   /** 流式生成的中间步骤图片 id 列表，仅失败时保留供排查/下载 */
   streamPartialImageIds?: string[]
   /** API 返回的原始图片 HTTP URL（非 base64 时记录） */
@@ -200,6 +195,8 @@ export interface TaskRecord {
   groupId?: string
   /** 多用户隔离指纹（API Key 的哈希） */
   ownerFingerprint?: string
+  /** 任务实际花费计费（如果服务商返回 cost 字段） */
+  cost?: number
 }
 
 // ===== IndexedDB 存储的图片 =====
@@ -235,7 +232,7 @@ export interface ImageGenerationRequest {
   model: string
   prompt: string
   size: string
-  quality: string
+  resolution: string
   output_format: string
   moderation: string
   output_compression?: number
@@ -249,7 +246,7 @@ export interface ImageResponseItem {
   url?: string
   revised_prompt?: string
   size?: string
-  quality?: string
+  resolution?: string
   output_format?: string
   output_compression?: number
   moderation?: string
@@ -258,7 +255,7 @@ export interface ImageResponseItem {
 export interface ImageApiResponse {
   data: ImageResponseItem[]
   size?: string
-  quality?: string
+  resolution?: string
   output_format?: string
   output_compression?: number
   moderation?: string
@@ -302,7 +299,7 @@ export interface ResponsesOutputItem {
     data?: string
   }
   size?: string
-  quality?: string
+  resolution?: string
   output_format?: string
   output_compression?: number
   moderation?: string
@@ -315,7 +312,7 @@ export interface ResponsesApiResponse {
   tools?: Array<{
     type?: string
     size?: string
-    quality?: string
+    resolution?: string
     output_format?: string
     output_compression?: number
     moderation?: string
@@ -341,35 +338,9 @@ export interface FalApiResponse {
   seed?: number
 }
 
-// ===== 导出数据 =====
-
-/** ZIP manifest.json 格式 */
-export interface ExportData {
-  version: number
-  exportedAt: string
-  settings?: AppSettings
-  tasks?: TaskRecord[]
-  /** imageId → 图片信息 */
-  imageFiles?: Record<string, {
-    path: string
-    createdAt?: number
-    source?: 'upload' | 'generated' | 'mask'
-    width?: number
-    height?: number
-  }>
-  /** imageId → 缩略图信息 */
-  thumbnailFiles?: Record<string, {
-    path: string
-    width?: number
-    height?: number
-    thumbnailVersion?: number
-  }>
-}
-
 export interface UserInfo {
   id: string
   email: string
   displayName: string | null
   role: string
 }
-

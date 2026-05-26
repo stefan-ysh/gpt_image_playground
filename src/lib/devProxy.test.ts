@@ -4,13 +4,13 @@ import { buildApiUrl, getProxyImageUrl } from './devProxy'
 describe('buildApiUrl', () => {
   it('uses the same-origin proxy prefix when API proxy is enabled', () => {
     expect(buildApiUrl('http://api.example.com/v1', 'images/edits', null, true)).toBe(
-      '/api-proxy/images/edits',
+      '/api/proxy?target=http%3A%2F%2Fapi.example.com%2Fv1&path=images%2Fedits',
     )
   })
 
   it('keeps the v1 segment when the configured API URL does not include it', () => {
     expect(buildApiUrl('http://api.example.com', 'images/generations', null, true)).toBe(
-      '/api-proxy/v1/images/generations',
+      '/api/proxy?target=http%3A%2F%2Fapi.example.com&path=v1%2Fimages%2Fgenerations',
     )
   })
 
@@ -28,7 +28,7 @@ describe('buildApiUrl', () => {
         },
         true,
       ),
-    ).toBe('/openai-proxy/responses')
+    ).toBe('/api/proxy?target=http%3A%2F%2Fapi.example.com%2Fv1&path=responses')
   })
 
   it('uses the configured API URL directly when API proxy is disabled', () => {
@@ -51,7 +51,7 @@ describe('getProxyImageUrl', () => {
     const url = 'https://dragoncode.codes/gpt-image/media/task_01KS7ZSKETT22WW3FYF5MTB486/0'
     const profile = {
       apiProxy: false,
-      baseUrl: 'https://api.apimart.ai/v1',
+      baseUrl: process.env.NEXT_PUBLIC_USE_TEST_URL === 'true' ? process.env.NEXT_PUBLIC_TEST_BASE_URL : process.env.NEXT_PUBLIC_DEFAULT_BASE_URL,
     } as any
 
     expect(getProxyImageUrl(url, profile)).toBe(url)
@@ -62,7 +62,7 @@ describe('getProxyImageUrl', () => {
     vi.stubGlobal('__DEV_PROXY_CONFIG__', {
       enabled: true,
       prefix: '/api-proxy',
-      target: 'https://api.apimart.ai/v1',
+      target: process.env.NEXT_PUBLIC_USE_TEST_URL === 'true' ? process.env.NEXT_PUBLIC_TEST_BASE_URL : process.env.NEXT_PUBLIC_DEFAULT_BASE_URL,
       changeOrigin: true,
       secure: false,
     })
@@ -70,11 +70,11 @@ describe('getProxyImageUrl', () => {
     const url = 'https://dragoncode.codes/gpt-image/media/task_01KS7ZSKETT22WW3FYF5MTB486/0'
     const profile = {
       apiProxy: true,
-      baseUrl: 'https://api.apimart.ai/v1',
+      baseUrl: process.env.NEXT_PUBLIC_USE_TEST_URL === 'true' ? process.env.NEXT_PUBLIC_TEST_BASE_URL : process.env.NEXT_PUBLIC_DEFAULT_BASE_URL,
     } as any
 
     expect(getProxyImageUrl(url, profile)).toBe(
-      '/api-proxy/media/task_01KS7ZSKETT22WW3FYF5MTB486/0',
+      '/api/proxy?target=https%3A%2F%2Fdragoncode.codes%2Fgpt-image&path=media%2Ftask_01KS7ZSKETT22WW3FYF5MTB486%2F0',
     )
   })
 
@@ -83,7 +83,7 @@ describe('getProxyImageUrl', () => {
     vi.stubGlobal('__DEV_PROXY_CONFIG__', {
       enabled: true,
       prefix: '/api-proxy',
-      target: 'https://api.apimart.ai/v1',
+      target: process.env.NEXT_PUBLIC_USE_TEST_URL === 'true' ? process.env.NEXT_PUBLIC_TEST_BASE_URL : process.env.NEXT_PUBLIC_DEFAULT_BASE_URL,
       changeOrigin: true,
       secure: false,
     })
@@ -91,7 +91,7 @@ describe('getProxyImageUrl', () => {
     const url = 'https://otherdomain.com/gpt-image/media/task_01KS7ZSKETT22WW3FYF5MTB486/0'
     const profile = {
       apiProxy: true,
-      baseUrl: 'https://api.apimart.ai/v1',
+      baseUrl: process.env.NEXT_PUBLIC_USE_TEST_URL === 'true' ? process.env.NEXT_PUBLIC_TEST_BASE_URL : process.env.NEXT_PUBLIC_DEFAULT_BASE_URL,
     } as any
 
     expect(getProxyImageUrl(url, profile)).toBe(url)
@@ -102,13 +102,13 @@ describe('getProxyImageUrl', () => {
     vi.stubGlobal('__DEV_PROXY_CONFIG__', {
       enabled: true,
       prefix: '/api-proxy',
-      target: 'https://api.apimart.ai/v1',
+      target: process.env.NEXT_PUBLIC_USE_TEST_URL === 'true' ? process.env.NEXT_PUBLIC_TEST_BASE_URL : process.env.NEXT_PUBLIC_DEFAULT_BASE_URL,
     })
 
     const dataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
     const profile = {
       apiProxy: true,
-      baseUrl: 'https://api.apimart.ai/v1',
+      baseUrl: process.env.NEXT_PUBLIC_USE_TEST_URL === 'true' ? process.env.NEXT_PUBLIC_TEST_BASE_URL : process.env.NEXT_PUBLIC_DEFAULT_BASE_URL,
     } as any
 
     expect(getProxyImageUrl(dataUrl, profile)).toBe(dataUrl)

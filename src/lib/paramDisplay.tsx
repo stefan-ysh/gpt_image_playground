@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { TaskParams, TaskRecord } from '../types'
 import ViewportTooltip from '../components/ViewportTooltip'
+import { normalizeResolution } from './resolution'
 
 type ParamKey = keyof TaskParams
 
@@ -81,6 +82,27 @@ export function getParamDisplay(task: TaskRecord, paramKey: ParamKey, actualPara
   }
 }
 
+export function formatResolutionValue(value: unknown): string {
+  return normalizeResolution(value, '1k')
+}
+
+export function getResolutionDisplay(task: TaskRecord, actualParams = task.actualParams) {
+  const requestedValue = task.params.resolution
+  const actualValue = actualParams?.resolution
+  const hasActualValue = actualValue !== undefined && actualValue !== null
+  const displayValue = hasActualValue ? actualValue : requestedValue
+  const isMismatch =
+    hasActualValue &&
+    String(actualValue) !== String(requestedValue)
+
+  return {
+    displayValue: formatResolutionValue(displayValue),
+    requestedValue: formatResolutionValue(requestedValue),
+    isMismatch,
+    isAutoResolved: false,
+  }
+}
+
 export function ParamValue({ task, paramKey, className = '', actualParams }: ParamValueProps) {
   const { displayValue, isMismatch } = getParamDisplay(task, paramKey, actualParams)
 
@@ -97,6 +119,31 @@ export function ParamValue({ task, paramKey, className = '', actualParams }: Par
 
 export function DetailParamValue({ task, paramKey, className = '', actualParams }: ParamValueProps) {
   const { displayValue, isMismatch, requestedValue, isAutoResolved } = getParamDisplay(task, paramKey, actualParams)
+
+  if (!isMismatch) {
+    if (isAutoResolved) {
+      return (
+        <span className={`inline-flex items-center gap-1 ${className}`}>
+          <span className="text-gray-700 dark:text-gray-300">{requestedValue}</span>
+          <span className="text-gray-300 dark:text-gray-600">|</span>
+          <ActualValueBadge value={displayValue} variant="normal" className="rounded px-1 py-0.5" />
+        </span>
+      )
+    }
+    return <span className={`text-gray-700 dark:text-gray-300 ${className}`}>{displayValue}</span>
+  }
+
+  return (
+    <span className={`inline-flex items-center gap-1 ${className}`}>
+      <span className="text-gray-700 dark:text-gray-300">{requestedValue}</span>
+      <span className="text-gray-300 dark:text-gray-600">|</span>
+      <ActualValueBadge value={displayValue} className="rounded px-1 py-0.5" />
+    </span>
+  )
+}
+
+export function DetailResolutionValue({ task, className = '', actualParams }: Omit<ParamValueProps, 'paramKey'>) {
+  const { displayValue, isMismatch, requestedValue, isAutoResolved } = getResolutionDisplay(task, actualParams)
 
   if (!isMismatch) {
     if (isAutoResolved) {

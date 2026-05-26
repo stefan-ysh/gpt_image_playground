@@ -11,6 +11,8 @@ export interface DevProxyConfig {
 
 const DEFAULT_PROXY_PREFIX = '/api-proxy'
 
+declare const __DEV_PROXY_CONFIG__: unknown
+
 export function normalizeBaseUrl(baseUrl: string): string {
   const trimmed = baseUrl.trim()
   if (!trimmed) return ''
@@ -63,12 +65,17 @@ export function buildApiUrl(
 ): string {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl)
   const endpointPath = path.replace(/^\/+/, '')
-  const apiPath = normalizedBaseUrl.endsWith('/v1')
+  // 针对 uploads 专属文件上传路径特判：决不强加 v1 前缀！因为上传接口属于资源管理，不受 v1 AI API 控制！
+  const isUploadPath = endpointPath.startsWith('uploads/')
+  const apiPath = isUploadPath
     ? endpointPath
-    : ['v1', endpointPath].join('/')
+    : normalizedBaseUrl.endsWith('/v1')
+      ? endpointPath
+      : ['v1', endpointPath].join('/')
 
   if (useApiProxy) {
-    return `${proxyConfig?.prefix ?? DEFAULT_PROXY_PREFIX}/${apiPath}`
+    // 采用超稳定、零 rewrites 依赖的同源 API 代理查询路径，从根本上消灭 Next.js 开发环境下重写 404 隐患
+    return `/api/proxy?target=${encodeURIComponent(normalizedBaseUrl)}&path=${encodeURIComponent(apiPath)}`
   }
 
   return normalizedBaseUrl ? `${normalizedBaseUrl}/${apiPath}` : `/${apiPath}`
@@ -82,16 +89,20 @@ export function resolveDevProxyConfig(input: unknown, isDev: boolean): DevProxyC
 export function readClientDevProxyConfig(): DevProxyConfig | null {
   return resolveDevProxyConfig(
     typeof __DEV_PROXY_CONFIG__ === 'undefined' ? null : __DEV_PROXY_CONFIG__,
-    import.meta.env.DEV,
+    process.env.NODE_ENV !== 'production',
   )
 }
 
 export function isApiProxyAvailable(proxyConfig: DevProxyConfig | null = readClientDevProxyConfig()): boolean {
-  return readRuntimeEnv(import.meta.env.VITE_API_PROXY_AVAILABLE) === 'true' || Boolean(proxyConfig?.enabled)
+  const envAvailable = readRuntimeEnv(process.env.NEXT_PUBLIC_API_PROXY_AVAILABLE || process.env.VITE_API_PROXY_AVAILABLE) === 'true'
+  const hasLocalConfig = Boolean(proxyConfig?.enabled)
+
+  // 释放网络直连掌控权：不再在本地开发模式下强行锁死并启用中转代理，由用户配置与环境变量显式决定是否开启
+  return envAvailable || hasLocalConfig
 }
 
 export function isApiProxyLocked(proxyConfig: DevProxyConfig | null = readClientDevProxyConfig()): boolean {
-  return readRuntimeEnv(import.meta.env.VITE_API_PROXY_LOCKED) === 'true' && isApiProxyAvailable(proxyConfig)
+  return readRuntimeEnv(process.env.NEXT_PUBLIC_API_PROXY_LOCKED || process.env.VITE_API_PROXY_LOCKED) === 'true' && isApiProxyAvailable(proxyConfig)
 }
 
 export function shouldUseApiProxy(
@@ -100,12 +111,7 @@ export function shouldUseApiProxy(
   provider?: string,
   baseUrl?: string,
 ): boolean {
-  const isAPIMartOrDragonCode = provider === 'custom-dragoncode-gpt-image-2' ||
-    (typeof baseUrl === 'string' && (baseUrl.toLowerCase().includes('dragoncode.codes') || baseUrl.toLowerCase().includes('api.apimart.ai')))
-
-  if (isAPIMartOrDragonCode) {
-    return isApiProxyAvailable(proxyConfig)
-  }
+  // 从根本上释放网络直连掌控权：无论是 APIMart、DragonCode 还是其他任何服务商，只要代理可用，都严格尊崇用户在界面上控制的 apiProxy 开关，或者系统级强制锁定配置
   return isApiProxyAvailable(proxyConfig) && (apiProxy || isApiProxyLocked(proxyConfig))
 }
 
@@ -116,15 +122,25 @@ export function getProxyImageUrl(url: string, profile: ApiProfile): string {
     return url
   }
 
+  const buildImageProxyUrl = (targetBase: string, imageUrl: URL) => {
+    const normalizedTarget = targetBase.replace(/\/+$/, '')
+    const targetUrl = new URL(normalizedTarget)
+    const targetPath = targetUrl.pathname.replace(/\/+$/, '')
+    const imagePath = imageUrl.pathname.startsWith(targetPath)
+      ? imageUrl.pathname.slice(targetPath.length).replace(/^\/+/, '')
+      : imageUrl.pathname.replace(/^\/+/, '')
+    const path = `${imagePath}${imageUrl.search}`
+    return `/api/proxy?target=${encodeURIComponent(normalizedTarget)}&path=${encodeURIComponent(path)}`
+  }
+
   try {
     const imageUrl = new URL(url)
-    const prefix = proxyConfig?.prefix ?? DEFAULT_PROXY_PREFIX
 
     // 针对龙码域名做特判保护，防止因 baseUrl 配置差异导致图片地址未能正确重写而跨域
     if (imageUrl.hostname.toLowerCase().includes('dragoncode.codes')) {
       const dragonCodeBase = 'https://dragoncode.codes/gpt-image'
       if (url.toLowerCase().startsWith(dragonCodeBase)) {
-        return url.replace(new RegExp(dragonCodeBase, 'i'), prefix)
+        return buildImageProxyUrl(dragonCodeBase, imageUrl)
       }
     }
 
@@ -137,7 +153,7 @@ export function getProxyImageUrl(url: string, profile: ApiProfile): string {
         : normalizedBase
 
       if (url.startsWith(basePrefix)) {
-        return url.replace(basePrefix, prefix)
+        return buildImageProxyUrl(basePrefix, imageUrl)
       }
     }
   } catch {
@@ -145,4 +161,3 @@ export function getProxyImageUrl(url: string, profile: ApiProfile): string {
   }
   return url
 }
-
