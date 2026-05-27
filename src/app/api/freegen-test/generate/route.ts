@@ -175,6 +175,8 @@ export async function POST(req: NextRequest) {
 
         const prompt = String(body.prompt || '').trim()
         const ratio_id = String(body.ratio_id || '16:9')
+        const mode = String(body.mode || 'text-to-image')
+        const image = typeof body.image === 'string' ? body.image : ''
 
         if (!prompt) {
             return json(
@@ -185,7 +187,12 @@ export async function POST(req: NextRequest) {
                 400,
             )
         }
-
+        console.log('[freegen-test]', {
+            mode,
+            ratio_id,
+            hasImage: Boolean(image),
+            imageLength: image.length,
+        })
         const signerRes = await fetch('https://prompt-signer.freegen.app/', {
             method: 'POST',
             headers: {
@@ -214,6 +221,17 @@ export async function POST(req: NextRequest) {
             )
         }
 
+        const generatorPayload: Record<string, unknown> = {
+            prompt,
+            ts: signerData.ts,
+            sig: signerData.sig,
+            ratio_id,
+        }
+
+        if (mode === 'image-to-image' && image) {
+            generatorPayload.image_data = image
+        }
+
         const jobRes = await fetch('https://image-generator.freegen.app/', {
             method: 'POST',
             headers: {
@@ -224,12 +242,7 @@ export async function POST(req: NextRequest) {
                 'user-agent':
                     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome Safari/537.36',
             },
-            body: JSON.stringify({
-                prompt,
-                ts: signerData.ts,
-                sig: signerData.sig,
-                ratio_id,
-            }),
+            body: JSON.stringify(generatorPayload),
             cache: 'no-store',
         })
 
