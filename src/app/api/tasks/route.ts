@@ -1,9 +1,10 @@
-import { NextResponse } from 'next/server';
+import { handleApiError } from '@/lib/api-error';
 import { requireCurrentUser } from '@/lib/db/auth';
 import { mysqlPool } from '@/lib/db/mysql';
 import { ensurePlaygroundSchema } from '@/lib/db/schema';
-import { handleApiError } from '@/lib/api-error';
 import { RowDataPacket } from 'mysql2';
+import { NextResponse } from 'next/server';
+
 import type { PoolConnection } from 'mysql2/promise';
 import { APIMART_PROVIDER_DEFINITION, APIMART_PROVIDER_ID } from '@/lib/apiProfiles';
 import { syncTaskImageRefs } from '@/lib/db/task-images';

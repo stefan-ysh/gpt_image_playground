@@ -249,9 +249,15 @@ export default function TaskCard({
 
   // 定时更新运行中任务的计时
   useEffect(() => {
-    if (task.status !== 'running' && !(task.status === 'error' && (task.falRecoverable || task.customRecoverable))) return
+    const shouldTick =
+      isTaskRunning(task.status) ||
+      (task.status === 'error' && (task.falRecoverable || task.customRecoverable))
+
+    if (!shouldTick) return
+
     const id = setInterval(() => setNow(Date.now()), 1000)
     setNow(Date.now())
+
     return () => clearInterval(id)
   }, [task.customRecoverable, task.falRecoverable, task.status])
 
@@ -309,6 +315,10 @@ export default function TaskCard({
   const isFalReconnecting = task.status === 'error' && task.falRecoverable
   const isCustomReconnecting = task.status === 'error' && task.customRecoverable
   const showRunningTimer = isTaskRunning(task.status) || isFalReconnecting || isCustomReconnecting
+  const isWorkerLikeRunning = isTaskRunning(task.status)
+  const showLegacyStreamPreview = task.status === 'running' && streamPreviewSrc
+  const showGeneratingPlaceholder =
+    isWorkerLikeRunning && (!showLegacyStreamPreview || !streamPreviewLoaded)
   const swipeBgClass = showSwipeAction
     ? swipeStartedSelected
       ? 'bg-gray-500 dark:bg-gray-600'
@@ -494,7 +504,7 @@ export default function TaskCard({
       <div className="flex flex-col min-[350px]:flex-row h-auto min-[350px]:h-40">
         {/* 左侧图片区域：小屏幕下自动全宽占满，高度为 40 保持极致自适应比例 */}
         <div className="relative flex h-40 w-full flex-shrink-0 items-center justify-center overflow-hidden bg-slate-100 min-[350px]:h-full min-[350px]:w-40 min-[350px]:min-w-[10rem] dark:bg-slate-950/35">
-          {task.status === 'running' && streamPreviewSrc && (
+          {showLegacyStreamPreview && (
             <>
               <img
                 src={streamPreviewSrc}
@@ -510,9 +520,10 @@ export default function TaskCard({
               )}
             </>
           )}
-          {task.status === 'running' && (!streamPreviewSrc || !streamPreviewLoaded) && (
-            <div className="absolute inset-0 ai-generating-glow ai-scanline flex flex-col items-center justify-center gap-2 backdrop-blur-xs select-none">
-              <div className="flex flex-col items-center gap-2 z-10 bg-black/20 dark:bg-black/35 px-4 py-2.5 rounded-2xl backdrop-blur-md shadow-lg border border-white/10 scale-95 sm:scale-100">
+          {showGeneratingPlaceholder && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 select-none">
+              <div className="absolute inset-0 shimmer-skeleton z-0 rounded-lg pointer-events-none" />
+              <div className="relative z-10 flex flex-col items-center gap-2 bg-black/20 dark:bg-black/35 px-4 py-2.5 rounded-2xl backdrop-blur-md shadow-lg border border-white/10 scale-95 sm:scale-100">
                 <svg
                   className="w-7 h-7 text-white animate-spin"
                   fill="none"
@@ -532,7 +543,9 @@ export default function TaskCard({
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                   />
                 </svg>
-                <span className="text-[10px] sm:text-xs text-white font-semibold tracking-wider">AI 正在绘制...</span>
+                <span className="text-[10px] sm:text-xs text-white font-semibold tracking-wider">
+                  {getTaskStatusText(task.status)}
+                </span>
               </div>
             </div>
           )}

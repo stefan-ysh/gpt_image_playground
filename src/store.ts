@@ -21,7 +21,6 @@ import type {
   TaskParams,
   InputImage,
   TaskRecord,
-  TaskGroup,
   UserInfo,
   StoredImage
 } from './types'
@@ -365,6 +364,35 @@ async function persistGeneratedImage(dataUrl: string, taskId: string): Promise<s
   }
 
   throw new Error(result.error || '图片转存失败')
+}
+
+async function persistInputImagesForWorker(inputImages: InputImage[]): Promise<InputImage[]> {
+  const persistedImages: InputImage[] = []
+
+  for (const image of inputImages) {
+    if (!image.id.startsWith('temp-')) {
+      persistedImages.push(image)
+      continue
+    }
+
+    if (!image.dataUrl) {
+      throw new Error('参考图还没有加载完成，请稍后再试')
+    }
+
+    const source: NonNullable<StoredImage['source']> =
+      image.editSource === 'mask' ? 'mask' : 'reference'
+
+    const stored = await storeImageDetailed(image.dataUrl, source)
+
+    persistedImages.push({
+      ...image,
+      id: stored.id,
+    })
+
+    cacheImage(stored.id, image.dataUrl)
+  }
+
+  return persistedImages
 }
 
 async function submitWorkerGenerationTask(options: {
@@ -1274,14 +1302,28 @@ export const useStore = create<AppState>()(
         try {
           const task = await getGenerationTask(taskId)
 
-          const { tasks, setTasks } = useStore.getState()
+          const { tasks, setTasks, selectedGroupId } = useStore.getState()
+
+          const taskGroupId = task.groupId ?? null
+
+          const shouldBelongToCurrentGroup =
+            selectedGroupId === 'all' ||
+            (selectedGroupId === 'unassigned' && taskGroupId == null) ||
+            (selectedGroupId !== 'all' &&
+              selectedGroupId !== 'unassigned' &&
+              taskGroupId === selectedGroupId)
+
           const exists = tasks.some((item: TaskRecord) => item.id === taskId)
 
-          setTasks(
-            exists
-              ? tasks.map((item: TaskRecord) => item.id === taskId ? task : item)
-              : [task, ...tasks],
-          )
+          if (exists) {
+            setTasks(
+              shouldBelongToCurrentGroup
+                ? tasks.map((item: TaskRecord) => item.id === taskId ? task : item)
+                : tasks.filter((item: TaskRecord) => item.id !== taskId),
+            )
+          } else if (shouldBelongToCurrentGroup) {
+            setTasks([task, ...tasks])
+          }
 
           if (!isWorkerRefreshableStatus(task.status)) {
             clearWorkerTaskRefreshTimer(taskId)
@@ -2264,12 +2306,32 @@ export async function submitTask(
       : null
 
   try {
+    const persistedInputImages = await persistInputImagesForWorker(inputImages)
+
+    const idMap = new Map<string, string>()
+    inputImages.forEach((image, index) => {
+      const persisted = persistedInputImages[index]
+      if (persisted && persisted.id !== image.id) {
+        idMap.set(image.id, persisted.id)
+      }
+    })
+
+    const persistedMaskTargetImageId =
+      maskTargetImageId && idMap.has(maskTargetImageId)
+        ? idMap.get(maskTargetImageId) ?? maskTargetImageId
+        : maskTargetImageId
+
+    const persistedMaskImageId =
+      maskImageId && idMap.has(maskImageId)
+        ? idMap.get(maskImageId) ?? maskImageId
+        : maskImageId
+
     const workerTask = await submitWorkerGenerationTask({
       prompt: apiPrompt,
       params: normalizedParams,
-      inputImages,
-      maskTargetImageId,
-      maskImageId,
+      inputImages: persistedInputImages,
+      maskTargetImageId: persistedMaskTargetImageId,
+      maskImageId: persistedMaskImageId,
       settings: activeSettings,
       groupId: workerGroupId,
     })
@@ -2286,6 +2348,13 @@ export async function submitTask(
           prompt: '',
           inputImages: [],
           maskEditorImageId: null,
+        }),
+      )
+    } else {
+      useStore.setState((s) =>
+        syncActiveInputDraft(s, {
+          inputImages: persistedInputImages,
+          maskEditorImageId: persistedMaskTargetImageId,
         }),
       )
     }

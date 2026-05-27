@@ -9,7 +9,14 @@ export const config = {
   pollIntervalMs: Number(process.env.WORKER_POLL_INTERVAL_MS || 3000),
   lockTtlMs: Number(process.env.WORKER_LOCK_TTL_MS || 120000),
 
-  mysqlUrl: process.env.MYSQL_URL || process.env.DATABASE_URL || '',
+  mysqlUrl:
+    process.env.MYSQL_URL ||
+    process.env.DATABASE_URL ||
+    (
+      process.env.MYSQL_USER && process.env.MYSQL_DATABASE
+        ? `mysql://${encodeURIComponent(process.env.MYSQL_USER)}:${encodeURIComponent(process.env.MYSQL_PASSWORD || '')}@${process.env.MYSQL_HOST || '127.0.0.1'}:${process.env.MYSQL_PORT || '3306'}/${process.env.MYSQL_DATABASE}`
+        : ''
+    ),
 
   wsPort: Number(process.env.WS_PORT || 3210),
 
@@ -30,4 +37,9 @@ export const config = {
       process.env.COS_DOMAIN ||
       '',
   },
+}
+if (!config.mysqlUrl) {
+  throw new Error(
+    'Missing MySQL connection config. Please set MYSQL_URL or DATABASE_URL in worker/.env.',
+  )
 }
