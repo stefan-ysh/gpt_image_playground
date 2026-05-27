@@ -6,22 +6,6 @@ const globalForMysql = globalThis as unknown as { mysqlPool: Pool | null };
 function resolvePoolOptions(): PoolOptions {
   const connectionLimit = Number(process.env.MYSQL_POOL_SIZE ?? '10');
   const mysqlTimezone = process.env.MYSQL_TIMEZONE?.trim() || '+08:00';
-  const url = process.env.MYSQL_URL || process.env.DATABASE_URL;
-
-  if (url && url.trim()) {
-    const parsed = new URL(url);
-    return {
-      host: parsed.hostname,
-      port: Number(parsed.port || '3306'),
-      user: decodeURIComponent(parsed.username || 'root'),
-      password: decodeURIComponent(parsed.password || ''),
-      database: process.env.MYSQL_DATABASE?.trim() || decodeURIComponent(parsed.pathname.replace(/^\//, '') || 'gpt_image'),
-      waitForConnections: true,
-      connectionLimit,
-      decimalNumbers: true,
-      timezone: mysqlTimezone,
-    } satisfies PoolOptions;
-  }
 
   const host = process.env.MYSQL_HOST?.trim() || '127.0.0.1';
   const port = Number(process.env.MYSQL_PORT ?? '3306');
