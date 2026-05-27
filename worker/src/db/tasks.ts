@@ -46,14 +46,22 @@ export async function pickRunnableTasks(limit = 5) {
     `
     SELECT *
     FROM playground_tasks
-    WHERE status IN (
-      'created',
-      'queued',
-      'submit_unknown',
-      'polling',
-      'polling_retryable',
-      'succeeded_raw',
-      'transfer_pending'
+    WHERE (
+      status IN (
+        'created',
+        'queued',
+        'submitting',
+        'submitted',
+        'polling',
+        'polling_retryable',
+        'succeeded_raw',
+        'storing_images',
+        'transfer_pending'
+      )
+      OR (
+        status = 'submit_unknown'
+        AND next_poll_at IS NOT NULL
+      )
     )
     AND (
       next_poll_at IS NULL

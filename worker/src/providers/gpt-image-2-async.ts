@@ -4,6 +4,7 @@ import type {
   ProviderSubmitResult,
   ProviderTaskInput,
 } from './types.js'
+import { config } from '../config.js'
 
 function buildUrl(baseUrl: string, path: string) {
   const base = baseUrl.replace(/\/+$/, '')
@@ -139,6 +140,24 @@ function createSubmitPayload(task: ProviderTaskInput) {
   return payload
 }
 
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 export class GptImage2AsyncProvider implements ProviderAdapter {
   async submit(task: ProviderTaskInput): Promise<ProviderSubmitResult> {
     if (!task.apiBaseUrl) {
@@ -151,14 +170,14 @@ export class GptImage2AsyncProvider implements ProviderAdapter {
 
     const url = buildUrl(task.apiBaseUrl, 'images/generations')
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${task.apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(createSubmitPayload(task)),
-    })
+    }, config.providerSubmitTimeoutMs)
 
     const payload = await readJsonResponse(response)
 
@@ -197,12 +216,12 @@ export class GptImage2AsyncProvider implements ProviderAdapter {
       `tasks/${encodeURIComponent(task.providerTaskId)}`,
     )
 
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${task.apiKey}`,
       },
-    })
+    }, config.providerPollTimeoutMs)
 
     const payload = await readJsonResponse(response)
 

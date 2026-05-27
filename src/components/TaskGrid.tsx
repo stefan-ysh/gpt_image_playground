@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { editOutputs, getCurrentFingerprint, removeTask, reuseConfig, useStore } from '../store'
+import { matchesTaskStatusFilter } from '../lib/taskStatus'
 import { FolderIcon, PhotoIcon, TagIcon } from './icons'
 import TaskCard from './TaskCard'
 import Dialog from './ui/Dialog'
@@ -54,7 +55,7 @@ export default function TaskGrid() {
     
     return sorted.filter((t) => {
       if (filterFavorite && !t.isFavorite) return false
-      const matchStatus = filterStatus === 'all' || t.status === filterStatus
+      const matchStatus = matchesTaskStatusFilter(t.status, filterStatus)
       if (!matchStatus) return false
       
       if (!q) return true

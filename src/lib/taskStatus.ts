@@ -11,7 +11,6 @@ export const RUNNING_TASK_STATUSES: TaskStatus[] = [
     'succeeded_raw',
     'storing_images',
     'transfer_pending',
-    'submit_unknown',
 ]
 
 export const FAILED_TASK_STATUSES: TaskStatus[] = [
@@ -64,6 +63,16 @@ export function canManualSyncTask(status: TaskStatus) {
 
 export function canRegenerateTask(status: TaskStatus) {
     return status === 'error' || status === 'provider_failed'
+}
+
+export function matchesTaskStatusFilter(
+    status: TaskStatus,
+    filterStatus: 'all' | 'running' | 'done' | 'error',
+) {
+    if (filterStatus === 'all') return true
+    if (filterStatus === 'running') return isTaskRunning(status)
+    if (filterStatus === 'done') return isTaskDone(status)
+    return isTaskFailed(status)
 }
 
 export function getTaskStatusText(status: TaskStatus) {
@@ -126,7 +135,7 @@ export function getTaskStatusDescription(status: TaskStatus) {
         case 'provider_failed':
             return '服务商明确返回失败。'
         case 'submit_unknown':
-            return '提交服务商时状态不确定，后台会继续确认。'
+            return '提交服务商时状态不确定。为避免重复扣费，需人工确认或手动同步一次。'
         case 'cancelled':
             return '任务已取消。'
         case 'running':

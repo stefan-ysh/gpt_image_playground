@@ -1,10 +1,14 @@
 import type { DbTask } from '../db/tasks.js'
+import { config } from '../config.js'
 import { updateTaskStatus } from '../db/tasks.js'
 import { getProvider } from '../providers/index.js'
 import { getNextBackoffMs } from '../utils/backoff.js'
 import { notifyTaskUpdated } from './notifier.js'
 import { processSucceededRawTask } from './image-transfer.js'
 import { resolveTaskInputImageDataUrls } from './input-images.js'
+
+const SUBMIT_UNKNOWN_MESSAGE =
+  '提交状态未知：服务商不支持幂等键，为避免重复扣费，已停止自动重提。请人工确认服务商后台后再处理。'
 
 function safeJsonParse<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback
@@ -83,13 +87,47 @@ function createActualParams(input: Awaited<ReturnType<typeof toProviderTaskInput
 function isSubmitStatus(status: string) {
   return (
     status === 'created' ||
-    status === 'queued' ||
-    status === 'submit_unknown'
+    status === 'queued'
   )
 }
 
 export async function runTask(task: DbTask) {
-  if (task.status === 'done' || task.status === 'provider_failed') {
+  if (
+    task.status === 'done' ||
+    task.status === 'provider_failed' ||
+    task.status === 'cancelled'
+  ) {
+    return
+  }
+
+  if (task.status === 'submit_unknown') {
+    await updateTaskStatus(task.id, 'submit_unknown', {
+      provider_status: 'submit_unknown',
+      next_poll_at: null,
+      last_provider_error: task.last_provider_error || SUBMIT_UNKNOWN_MESSAGE,
+    })
+    await notifyTaskUpdated(task.id, 'submit_unknown')
+    return
+  }
+
+  if (task.status === 'submitting' || task.status === 'submitted') {
+    if (task.provider_task_id) {
+      await updateTaskStatus(task.id, 'polling', {
+        provider_status: task.provider_status || 'submitted',
+        next_poll_at: Date.now(),
+      })
+      await notifyTaskUpdated(task.id, 'polling')
+      return
+    }
+
+    await updateTaskStatus(task.id, 'submit_unknown', {
+      provider_status: 'submit_unknown',
+      next_poll_at: null,
+      last_provider_error:
+        task.last_provider_error ||
+        '任务停留在提交阶段，但没有 provider_task_id。为避免重复扣费，已停止自动重提。',
+    })
+    await notifyTaskUpdated(task.id, 'submit_unknown')
     return
   }
 
@@ -98,12 +136,31 @@ export async function runTask(task: DbTask) {
     return
   }
 
+  if (
+    (task.status === 'polling' || task.status === 'polling_retryable') &&
+    !task.provider_task_id
+  ) {
+    await updateTaskStatus(task.id, 'submit_unknown', {
+      provider_status: 'submit_unknown',
+      next_poll_at: null,
+      last_provider_error:
+        task.last_provider_error ||
+        '任务需要查询服务商状态，但缺少 provider_task_id。请人工确认服务商后台状态。',
+    })
+    await notifyTaskUpdated(task.id, 'submit_unknown')
+    return
+  }
+
   if (task.status === 'polling' || task.status === 'polling_retryable') {
     await pollProviderTask(task)
     return
   }
 
-  if (task.status === 'succeeded_raw' || task.status === 'transfer_pending') {
+  if (
+    task.status === 'succeeded_raw' ||
+    task.status === 'storing_images' ||
+    task.status === 'transfer_pending'
+  ) {
     await processSucceededRawTask(task)
   }
 }
@@ -116,6 +173,7 @@ async function submitProviderTask(task: DbTask) {
   await updateTaskStatus(task.id, 'submitting', {
     last_provider_error: null,
     provider_status: 'submitting',
+    next_poll_at: Date.now() + config.providerSubmitTimeoutMs + 5000,
     actual_params: JSON.stringify(actualParams),
   })
   await notifyTaskUpdated(task.id, 'submitting')
@@ -160,8 +218,10 @@ async function submitProviderTask(task: DbTask) {
     await updateTaskStatus(task.id, 'submit_unknown', {
       provider_status: 'submit_unknown',
       last_provider_error:
-        error instanceof Error ? error.message : String(error),
-      next_poll_at: Date.now() + 30000,
+        error instanceof Error
+          ? `${error.message}\n${SUBMIT_UNKNOWN_MESSAGE}`
+          : `${String(error)}\n${SUBMIT_UNKNOWN_MESSAGE}`,
+      next_poll_at: null,
       actual_params: JSON.stringify(actualParams),
     })
 

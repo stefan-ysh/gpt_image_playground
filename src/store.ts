@@ -366,7 +366,7 @@ async function persistGeneratedImage(dataUrl: string, taskId: string): Promise<s
   throw new Error(result.error || '图片转存失败')
 }
 
-async function persistInputImagesForWorker(inputImages: InputImage[]): Promise<InputImage[]> {
+async function persistInputImagesForWorker(inputImages: InputImage[], taskId: string): Promise<InputImage[]> {
   const persistedImages: InputImage[] = []
 
   for (const image of inputImages) {
@@ -382,7 +382,7 @@ async function persistInputImagesForWorker(inputImages: InputImage[]): Promise<I
     const source: NonNullable<StoredImage['source']> =
       image.editSource === 'mask' ? 'mask' : 'reference'
 
-    const stored = await storeImageDetailed(image.dataUrl, source)
+    const stored = await storeImageDetailed(image.dataUrl, source, taskId)
 
     persistedImages.push({
       ...image,
@@ -396,6 +396,7 @@ async function persistInputImagesForWorker(inputImages: InputImage[]): Promise<I
 }
 
 async function submitWorkerGenerationTask(options: {
+  taskId: string
   prompt: string
   params: TaskParams
   inputImages: InputImage[]
@@ -422,6 +423,7 @@ async function submitWorkerGenerationTask(options: {
   )
 
   return createGenerationTask({
+    taskId: options.taskId,
     prompt: options.prompt,
     params: options.params,
     inputImageIds: options.inputImages.map((image) => image.id),
@@ -1835,7 +1837,6 @@ function isWorkerRefreshableStatus(status: TaskRecord['status']) {
     'succeeded_raw',
     'storing_images',
     'transfer_pending',
-    'submit_unknown',
   ].includes(status)
 }
 
@@ -2299,6 +2300,7 @@ export async function submitTask(
   const maskImageId = null
 
   const apiPrompt = replaceImageMentionsForApi(trimmedPrompt, inputImages.length)
+  const workerTaskId = genId()
 
   const workerGroupId =
     selectedGroupId && selectedGroupId !== 'unassigned'
@@ -2306,7 +2308,7 @@ export async function submitTask(
       : null
 
   try {
-    const persistedInputImages = await persistInputImagesForWorker(inputImages)
+    const persistedInputImages = await persistInputImagesForWorker(inputImages, workerTaskId)
 
     const idMap = new Map<string, string>()
     inputImages.forEach((image, index) => {
@@ -2327,6 +2329,7 @@ export async function submitTask(
         : maskImageId
 
     const workerTask = await submitWorkerGenerationTask({
+      taskId: workerTaskId,
       prompt: apiPrompt,
       params: normalizedParams,
       inputImages: persistedInputImages,

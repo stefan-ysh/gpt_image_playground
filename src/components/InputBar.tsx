@@ -10,6 +10,7 @@ import { downloadImageIds, formatExportFileTime } from '../lib/downloadImages'
 import { DEFAULT_FAL_IMAGE_SIZE, getChangedParams, normalizeParamsForSettings } from '../lib/paramCompatibility'
 import { getAtImageQuery, getImageMentionLabel, getPromptIndexFromVisibleIndex, getPromptMentionParts, getSelectedImageMentionLabel, getSelectedTextMentionLabel, imageMentionMatches, insertImageMentionAtVisibleRange, isCursorInSelectedImageMention, stripImageMentionMarkers } from '../lib/promptImageMentions'
 import { isSupported4KRatio, normalizeImageSize } from '../lib/size'
+import { matchesTaskStatusFilter } from '../lib/taskStatus'
 import { dismissAllTooltips } from '../lib/tooltipDismiss'
 import { addImageFromFile, createInputImageFromFile, deleteImageIfUnreferenced, ensureImageCached, removeMultipleTasks, submitTask, updateTaskInStore, useStore } from '../store'
 import { DEFAULT_PARAMS } from '../types'
@@ -390,7 +391,7 @@ export default function InputBar() {
 
     return sorted.filter((t) => {
       if (filterFavorite && !t.isFavorite) return false
-      const matchStatus = filterStatus === 'all' || t.status === filterStatus
+      const matchStatus = matchesTaskStatusFilter(t.status, filterStatus)
       if (!matchStatus) return false
 
       if (!q) return true

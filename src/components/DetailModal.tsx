@@ -1,4 +1,4 @@
-import { canManualSyncTask, getTaskStatusDescription, getTaskStatusText, isTaskDone, isTaskFailed, isTaskRunning, isTaskRunning } from '@/lib/taskStatus'
+import { canManualSyncTask, getTaskStatusDescription, getTaskStatusText, isTaskDone, isTaskFailed, isTaskRunning } from '@/lib/taskStatus'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'

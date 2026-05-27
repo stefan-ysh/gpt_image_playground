@@ -8,6 +8,8 @@ export const config = {
   concurrency: Number(process.env.WORKER_CONCURRENCY || 3),
   pollIntervalMs: Number(process.env.WORKER_POLL_INTERVAL_MS || 3000),
   lockTtlMs: Number(process.env.WORKER_LOCK_TTL_MS || 120000),
+  providerSubmitTimeoutMs: Number(process.env.PROVIDER_SUBMIT_TIMEOUT_MS || 90000),
+  providerPollTimeoutMs: Number(process.env.PROVIDER_POLL_TIMEOUT_MS || 30000),
 
   mysqlUrl:
     process.env.MYSQL_URL ||
