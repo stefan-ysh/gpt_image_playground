@@ -21,6 +21,7 @@ import ShowcaseModal from './components/ShowcaseModal'
 import { useGlobalClickSuppression } from './lib/clickSuppression'
 import AuthGuard from './components/auth/AuthGuard'
 import Sidebar from './components/Sidebar'
+import FreegenTestPage from './components/FreegenTestPage'
 
 export default function App() {
   const setSettings = useStore((s) => s.setSettings)
@@ -77,6 +78,10 @@ export default function App() {
     document.addEventListener('dragstart', preventPageImageDrag)
     return () => document.removeEventListener('dragstart', preventPageImageDrag)
   }, [])
+
+  if (window.location.pathname === '/freegen-test') {
+    return <FreegenTestPage />
+  }
 
   return (
     <AuthGuard>
