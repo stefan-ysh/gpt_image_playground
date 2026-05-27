@@ -112,10 +112,12 @@ export default function FreegenTestPage() {
 
 const styles: Record<string, CSSProperties> = {
   page: {
-    minHeight: "100vh",
+    height: "100dvh",
+    overflowY: "auto",
     background: "#0f1115",
     padding: 40,
     color: "#fff",
+    boxSizing: "border-box",
   },
   card: {
     maxWidth: 960,

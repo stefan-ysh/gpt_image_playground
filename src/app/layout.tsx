@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import '../index.css';
+import CssReadyGate from '../components/CssReadyGate';
 
 export const metadata: Metadata = {
   title: 'Image Studio',
@@ -26,6 +27,7 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased overflow-hidden">
+        <CssReadyGate />
         {children}
       </body>
     </html>

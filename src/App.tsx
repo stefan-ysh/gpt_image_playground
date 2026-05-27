@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useLayoutEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { initStore } from './store'
 import { useStore } from './store'
 import { buildSettingsFromUrlParams, clearUrlSettingParams, hasUrlSettingParams } from './lib/urlSettings'
@@ -21,36 +21,12 @@ import ShowcaseModal from './components/ShowcaseModal'
 import { useGlobalClickSuppression } from './lib/clickSuppression'
 import AuthGuard from './components/auth/AuthGuard'
 import Sidebar from './components/Sidebar'
-import FreegenTestPage from './components/FreegenTestPage'
 
 export default function App() {
   const setSettings = useStore((s) => s.setSettings)
   const [showShowcase, setShowShowcase] = useState(false)
   useDockerApiUrlMigrationNotice()
   useGlobalClickSuppression()
-
-  useLayoutEffect(() => {
-    const root = document.documentElement
-    let frame = 0
-
-    const syncCssReady = () => {
-      const cssLoaded = getComputedStyle(root).getPropertyValue('--app-css-loaded').trim() === '1'
-      root.toggleAttribute('data-app-css-ready', cssLoaded)
-      if (!cssLoaded) frame = window.requestAnimationFrame(syncCssReady)
-    }
-
-    syncCssReady()
-    const interval = window.setInterval(syncCssReady, 250)
-    const failOpenTimer = window.setTimeout(() => {
-      root.setAttribute('data-app-css-ready', '')
-    }, 1500)
-    return () => {
-      if (frame) window.cancelAnimationFrame(frame)
-      window.clearInterval(interval)
-      window.clearTimeout(failOpenTimer)
-      root.removeAttribute('data-app-css-ready')
-    }
-  }, [])
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search)
@@ -78,10 +54,6 @@ export default function App() {
     document.addEventListener('dragstart', preventPageImageDrag)
     return () => document.removeEventListener('dragstart', preventPageImageDrag)
   }, [])
-
-  if (window.location.pathname === '/freegen-test') {
-    return <FreegenTestPage />
-  }
 
   return (
     <AuthGuard>
