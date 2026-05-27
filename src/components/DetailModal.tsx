@@ -1,4 +1,4 @@
-import { canManualSyncTask, getTaskStatusDescription, getTaskStatusText, isTaskDone, isTaskFailed, isTaskRunning } from '@/lib/taskStatus'
+import { canManualSyncTask, getTaskStatusDescription, getTaskStatusText, isTaskDone, isTaskFailed, isTaskRunning, isTaskRunning } from '@/lib/taskStatus'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
@@ -228,8 +228,8 @@ export default function DetailModal() {
   const showRevisedPrompt = Boolean(currentRevisedPrompt && currentRevisedPrompt !== task.prompt.trim())
   const showPromptWarning = false
   const taskModel = task.apiModel || task.apiProfileSnapshot?.model || ''
-  const isFalReconnecting = task.status === 'error' && task.falRecoverable
-  const isCustomReconnecting = task.status === 'error' && task.customRecoverable
+  const isFalReconnecting = isTaskFailed(task.status) && task.falRecoverable
+  const isCustomReconnecting = isTaskFailed(task.status) && task.customRecoverable
   const rawImageUrls = task.rawImageUrls ?? []
   const hasTransferableRemoteImages = [
     ...(task.outputImages ?? []),
@@ -246,7 +246,7 @@ export default function DetailModal() {
   }
 
   const formatDuration = () => {
-    if (task.status === 'running' || isFalReconnecting || isCustomReconnecting) {
+    if (isTaskRunning(task.status) || isFalReconnecting || isCustomReconnecting) {
       const seconds = Math.max(0, Math.floor((now - task.createdAt) / 1000))
       const mm = String(Math.floor(seconds / 60)).padStart(2, '0')
       const ss = String(seconds % 60).padStart(2, '0')
@@ -436,7 +436,7 @@ export default function DetailModal() {
 
         {/* 左侧：图片 */}
         <div className="md:w-1/2 w-full h-64 md:h-auto bg-gray-100 dark:bg-black/20 relative flex items-center justify-center flex-shrink-0 min-h-[16rem]">
-          {task.status === 'done' && outputLen > 0 && (
+          {isTaskDone(task.status) && outputLen > 0 && (
             <div className="absolute right-3 top-[15px] z-20 flex items-center gap-1.5">
               <div className="relative group flex">
                 <button
@@ -477,7 +477,7 @@ export default function DetailModal() {
               )}
             </div>
           )}
-          {task.status === 'done' && outputLen > 0 && currentOutputPreviewSrc && (
+          {isTaskDone(task.status) && outputLen > 0 && currentOutputPreviewSrc && (
             <>
               <div className="relative flex items-center justify-center w-full h-full max-w-[calc(100%-2rem)] max-h-[calc(100%-2rem)]">
                 {/* 详情大图高品质微光闪烁骨架屏 (Shimmer Skeleton) */}
@@ -574,7 +574,7 @@ export default function DetailModal() {
                 </svg>
                 {formatDuration()}
               </div>
-              {task.status === 'running' && streamPreviewLen > 0 && (
+              {isTaskRunning(task.status) && streamPreviewLen > 0 && (
                 <>
                   {currentStreamPreviewSrc ? (
                     <img
@@ -621,7 +621,7 @@ export default function DetailModal() {
                   )}
                 </>
               )}
-              {task.status === 'running' && streamPreviewLen === 0 && (
+              {isTaskRunning(task.status) && streamPreviewLen === 0 && (
                 <svg className="w-10 h-10 text-blue-400 animate-spin" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -629,7 +629,7 @@ export default function DetailModal() {
               )}
             </>
           )}
-          {task.status === 'error' && isFalReconnecting && (
+          {isTaskFailed(task.status) && isFalReconnecting && (
             <div className="w-full max-w-md px-4 text-center">
               <svg className="w-10 h-10 text-yellow-400 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />

@@ -50,7 +50,7 @@ export const APIMART_PROVIDER_DEFINITION: CustomProviderDefinition = {
     body: {
       model: '$profile.model',
       prompt: '$prompt',
-      size: '$params.sizeRatio',
+      size: '$params.size',
       resolution: '$params.resolution',
       image_urls: '$inputImages.dataUrls',
       n: '$params.n',
