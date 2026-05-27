@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import WebSocket from 'ws'
-
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
@@ -72,84 +70,103 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string) {
 async function waitImageFromWebSocket(jobId: string) {
     const auth = await createWebSocketAuth(jobId)
 
-    return withTimeout(
-        new Promise<{ image_data: string; logs: WsMessage[] }>((resolve, reject) => {
-            const logs: WsMessage[] = []
+    return new Promise<{ image_data?: string; logs: WsMessage[] }>((resolve) => {
+        const logs: WsMessage[] = []
 
-            const ws = new WebSocket('wss://websocket-bridge.freegen.app/ws', {
-                headers: {
-                    Origin: 'https://freegen.app',
-                    'User-Agent':
-                        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome Safari/537.36',
-                },
+        const ws = new WebSocket('wss://websocket-bridge.freegen.app/ws')
+
+        let settled = false
+
+        const timer = setTimeout(() => {
+            if (settled) return
+            settled = true
+
+            logs.push({
+                type: 'timeout',
+                message: '60 秒内没有收到 result',
             })
 
-            let settled = false
+            try {
+                ws.close()
+            } catch { }
 
-            function finishError(error: unknown) {
-                if (settled) return
-                settled = true
-                try {
-                    ws.close()
-                } catch { }
-                reject(error)
+            resolve({ logs })
+        }, 60_000)
+
+        function finishSuccess(imageData: string) {
+            if (settled) return
+            settled = true
+            clearTimeout(timer)
+
+            try {
+                ws.close()
+            } catch { }
+
+            resolve({
+                image_data: imageData,
+                logs,
+            })
+        }
+
+        ws.addEventListener('open', () => {
+            const payload = {
+                type: 'subscribe',
+                job_id: jobId,
+                auth,
             }
 
-            function finishSuccess(imageData: string) {
-                if (settled) return
-                settled = true
-                try {
-                    ws.close()
-                } catch { }
-                resolve({
-                    image_data: imageData,
-                    logs,
-                })
-            }
-
-            ws.on('open', () => {
-                const payload = {
-                    type: 'subscribe',
-                    job_id: jobId,
-                    auth,
-                }
-
-                logs.push({
-                    type: 'client_subscribe',
-                    payload,
-                })
-
-                ws.send(JSON.stringify(payload))
+            logs.push({
+                type: 'client_subscribe',
+                payload,
             })
 
-            ws.on('message', (raw) => {
-                try {
-                    const data = JSON.parse(raw.toString()) as WsMessage
-                    logs.push(data)
+            ws.send(JSON.stringify(payload))
+        })
 
-                    if (data.type === 'result' && typeof data.image_data === 'string') {
-                        finishSuccess(data.image_data)
+        ws.addEventListener('message', (event) => {
+            try {
+                const rawText =
+                    typeof event.data === 'string'
+                        ? event.data
+                        : Buffer.from(event.data as ArrayBuffer).toString('utf-8')
+
+                let data: WsMessage
+
+                try {
+                    data = JSON.parse(rawText) as WsMessage
+                } catch {
+                    data = {
+                        type: 'raw_message',
+                        message: rawText,
                     }
-                } catch (error) {
-                    finishError(error)
                 }
-            })
 
-            ws.on('error', (error) => {
-                finishError(error)
-            })
+                logs.push(data)
 
-            ws.on('close', () => {
-                if (!settled) {
-                    logs.push({
-                        type: 'ws_closed_without_result',
-                    })
+                if (data.type === 'result' && typeof data.image_data === 'string') {
+                    finishSuccess(data.image_data)
                 }
+            } catch (error) {
+                logs.push({
+                    type: 'message_parse_error',
+                    message: error instanceof Error ? error.message : String(error),
+                })
+            }
+        })
+
+        ws.addEventListener('error', () => {
+            logs.push({
+                type: 'ws_error',
+                message: 'WebSocket error',
             })
-        }),
-        60_000,
-        'WebSocket timeout: 60 秒内没有收到图片结果',
-    )
+        })
+
+        ws.addEventListener('close', () => {
+            logs.push({
+                type: 'ws_close',
+            })
+        })
+    })
 }
 
 export async function POST(req: NextRequest) {
@@ -231,6 +248,19 @@ export async function POST(req: NextRequest) {
         }
 
         const result = await waitImageFromWebSocket(jobData.job_id)
+
+        if (!result.image_data) {
+            return json(
+                {
+                    ok: false,
+                    step: 'websocket',
+                    job_id: jobData.job_id,
+                    error: 'WebSocket 没有返回图片结果',
+                    logs: result.logs,
+                },
+                504,
+            )
+        }
 
         return json({
             ok: true,
