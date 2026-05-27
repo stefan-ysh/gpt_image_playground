@@ -341,14 +341,14 @@ export default function TaskCard({
   const showModel = Boolean(taskModel)
   const isInterrupted = task.status === 'error' && task.error === '已停止生成。'
   const canQueryResult =
-  canManualSyncTask(task.status) ||
-  (
-    !isTaskDone(task.status) &&
+    canManualSyncTask(task.status) ||
     (
-      Boolean(task.falRequestId && task.falEndpoint) ||
-      Boolean(task.customTaskId)
+      !isTaskDone(task.status) &&
+      (
+        Boolean(task.falRequestId && task.falEndpoint) ||
+        Boolean(task.customTaskId)
+      )
     )
-  )
   const hasRemoteOutputImages = [
     ...(task.outputImages ?? []),
     ...(task.outputImagesPending ?? []),
