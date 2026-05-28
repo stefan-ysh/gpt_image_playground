@@ -148,3 +148,31 @@ export function getTaskStatusDescription(status: TaskStatus) {
             return ''
     }
 }
+
+/**
+ * 根据生图任务已耗费的时长（秒），动态流转富有沉浸感与艺术气息的中文创作步骤。
+ * 将英文步骤 Creating image, Sketching it out, Making the first draft, Setting the scene, Polishing details, Finishing up, Adding final touches 等
+ * 翻译成极具美感且与已流逝时间线完美配合的中文笔触。
+ */
+export function getCreativeGeneratingText(status: TaskStatus, elapsedSeconds: number): string {
+    // 只有在真正的“AI生图处理期”（running 或 polling）才启动动态创作步骤
+    if (status !== 'polling' && status !== 'running') {
+        return getTaskStatusText(status)
+    }
+
+    if (elapsedSeconds < 3) {
+        return '正在准备创作' // Creating image
+    } else if (elapsedSeconds < 6) {
+        return '正在构图起稿' // Sketching it out
+    } else if (elapsedSeconds < 9) {
+        return '正在铺设初色' // Making the first draft
+    } else if (elapsedSeconds < 12) {
+        return '正在布景塑造' // Setting the scene
+    } else if (elapsedSeconds < 15) {
+        return '正在精细润色' // Polishing details
+    } else if (elapsedSeconds < 18) {
+        return '正在画龙点睛' // Finishing up
+    } else {
+        return '最终润色中...' // Adding final touches
+    }
+}

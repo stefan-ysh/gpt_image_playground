@@ -1,4 +1,4 @@
-import { canManualSyncTask, getTaskStatusDescription, getTaskStatusText, isSavingImageStatus, isTaskDone, isTaskFailed, isTaskRunning } from '@/lib/taskStatus'
+import { canManualSyncTask, getTaskStatusDescription, getTaskStatusText, isSavingImageStatus, isTaskDone, isTaskFailed, isTaskRunning, getCreativeGeneratingText } from '@/lib/taskStatus'
 import { useEffect, useRef, useState } from 'react'
 
 import type {ReactNode} from 'react'
@@ -574,7 +574,7 @@ export default function TaskCard({
                   />
                 </svg>
                 <span className="text-[10px] sm:text-xs text-white font-semibold tracking-wider">
-                  {getTaskStatusText(task.status)}
+                  {getCreativeGeneratingText(task.status, Math.max(0, Math.floor((now - now % 1000 - task.createdAt) / 1000)))}
                 </span>
               </div>
             </div>
