@@ -15,8 +15,17 @@ export default function Header({ onOpenShowcase }: HeaderProps) {
   const settings = useStore((s) => s.settings)
   const setSettings = useStore((s) => s.setSettings)
   const setSidebarOpen = useStore((s) => s.setSidebarOpen)
+  const selectedGroupId = useStore((s) => s.selectedGroupId)
+  const groups = settings.groups ?? []
+  
   const currentTheme = settings.theme || 'system'
   const [showHelp, setShowHelp] = useState(false)
+
+  const currentGroupName = selectedGroupId === 'unassigned'
+    ? '未分类'
+    : selectedGroupId === 'all'
+    ? '全部'
+    : (groups.find(g => g.id === selectedGroupId)?.name || '未分类')
 
   const toggleTheme = () => {
     const nextThemeMap: Record<string, 'light' | 'dark' | 'system'> = {
@@ -50,6 +59,30 @@ export default function Header({ onOpenShowcase }: HeaderProps) {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
               </svg>
             </button>
+
+            {/* 桌面端画廊分组面包屑/状态指示器 */}
+            <div className="hidden lg:flex items-center gap-2 select-none">
+              <span className="flex items-center gap-1.5 rounded-xl border border-slate-200/50 bg-slate-50/50 px-2.5 py-1 text-xs font-medium text-slate-500 transition-all duration-300 dark:border-white/[0.05] dark:bg-white/[0.02] dark:text-slate-400">
+                <svg className="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                </svg>
+                工作区画廊
+              </span>
+              <span className="text-slate-300 dark:text-white/[0.08] text-xs font-light">/</span>
+              <span className="flex items-center gap-1.5 rounded-xl border border-blue-100 bg-blue-50/40 px-3 py-1 text-xs font-semibold text-blue-600 transition-all duration-300 shadow-[0_4px_12px_rgba(37,99,235,0.03)] dark:border-blue-500/10 dark:bg-blue-500/5 dark:text-blue-300">
+                {selectedGroupId === 'unassigned' ? (
+                  <>
+                    <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse dark:bg-blue-400" />
+                    📂 未分类
+                  </>
+                ) : (
+                  <>
+                    <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse dark:bg-indigo-400" />
+                    🏷️ {currentGroupName}
+                  </>
+                )}
+              </span>
+            </div>
           </div>
           <div className="flex shrink-0 items-center gap-1 rounded-2xl border border-slate-200/70 bg-white/[0.55] p-1 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.35)] dark:border-white/[0.08] dark:bg-white/[0.03]">
             <div

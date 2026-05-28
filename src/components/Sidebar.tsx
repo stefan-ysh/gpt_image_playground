@@ -62,9 +62,6 @@ export default function Sidebar() {
       message: `确认要删除分组「${name}」吗？组内的图片不会被删除，将重新划分为「未分类」。`,
       action: () => {
         deleteGroup(id)
-        if (selectedGroupId === id) {
-          setSelectedGroupId('unassigned')
-        }
       }
     })
   }
@@ -96,8 +93,8 @@ export default function Sidebar() {
       >
         <div className="flex h-16 items-center justify-between border-b border-slate-200/60 px-4 dark:border-white/[0.06]">
           <span className="flex items-center gap-2.5 font-bold tracking-tight text-gray-950 dark:text-gray-100">
-            <span className="flex h-9 w-9 items-center justify-center rounded-2xl border border-blue-200/70 bg-blue-50 text-blue-600 shadow-[0_14px_32px_-24px_rgba(37,99,235,0.55)] dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-300">
-            <img src="./logo.png" alt="Image Studio Logo" />
+            <span className="flex h-9 w-9 items-center justify-center rounded-2xl border border-blue-200/70 bg-blue-50 text-blue-600 shadow-[0_14px_32px_-24px_rgba(37,99,235,0.55)] dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-300 overflow-hidden">
+              <img src="/logo.png" alt="Image Studio Logo" className="object-cover w-full h-full rounded-2xl" />
             </span>
             <span className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
               Image Studio

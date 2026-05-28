@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { editOutputs, getCurrentFingerprint, removeTask, reuseConfig, useStore } from '../store'
 import { matchesTaskStatusFilter } from '../lib/taskStatus'
+import { editOutputs, getCurrentFingerprint, removeTask, reuseConfig, useStore } from '../store'
 import { FolderIcon, PhotoIcon, TagIcon } from './icons'
 import TaskCard from './TaskCard'
 import Dialog from './ui/Dialog'
@@ -41,11 +41,6 @@ export default function TaskGrid() {
   const settings = useStore((s) => s.settings)
   const groups = settings.groups ?? []
 
-  const currentGroupName = useMemo(() => {
-    if (selectedGroupId === 'unassigned') return '未分类'
-    const found = groups.find((g) => g.id === selectedGroupId)
-    return found ? found.name : '未分类'
-  }, [selectedGroupId, groups])
 
   const [assigningTask, setAssigningTask] = useState<typeof tasks[0] | null>(null)
 
@@ -315,13 +310,6 @@ export default function TaskGrid() {
       data-task-grid-root
       className="relative min-h-[50vh]"
     >
-      {/* 分组名称面包屑/指示标题 */}
-      <div className="mb-5 flex items-center gap-2 text-xs font-medium text-slate-500 select-none dark:text-slate-400" data-no-drag-select>
-        <span className="rounded-full border border-slate-200/70 bg-white/[0.58] px-2.5 py-1 dark:border-white/[0.08] dark:bg-white/[0.03]">画廊分组</span>
-        <span className="text-slate-300 dark:text-slate-600">/</span>
-        <span className="font-semibold text-slate-950 dark:text-slate-100">{currentGroupName}</span>
-      </div>
-
       {showInitialLoading ? (
         <div className="mx-auto flex max-w-xl flex-col items-center py-20 text-center text-slate-400 dark:text-slate-500">
           <div className="rounded-[2rem] border border-slate-200/70 bg-white/[0.54] px-8 py-10 shadow-[0_24px_60px_-42px_rgba(15,23,42,0.45)] dark:border-white/[0.08] dark:bg-white/[0.025]">
