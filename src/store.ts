@@ -1517,16 +1517,30 @@ export const useStore = create<AppState>()(
           })
           const json = await res.json()
           if (json.success) {
+            const { selectedGroupId, setSelectedGroupId, settings } = useStore.getState()
+            let targetGroupId = 'unassigned'
+
+            if (selectedGroupId === id) {
+              const currentGroups = settings.groups ?? []
+              const currentIndex = currentGroups.findIndex((g) => g.id === id)
+              if (currentIndex > 0) {
+                const prevGroup = currentGroups[currentIndex - 1]
+                targetGroupId = prevGroup.id
+              }
+            }
+
+            // 1. 更新前端内存 store 状态
             set((s) => {
               const groups = (s.settings.groups ?? []).filter((g) => g.id !== id)
               const tasks = s.tasks.map((t) => t.groupId === id ? { ...t, groupId: undefined } : t)
               return { settings: { ...s.settings, groups }, tasks }
             })
-            // 如果删除的是当前选中的分组，则切回“未分类”
-            const { selectedGroupId, setSelectedGroupId } = useStore.getState()
+
+            // 2. 如果删除的是当前选中的分组，则切回上一分组并加载最新数据
             if (selectedGroupId === id) {
-              setSelectedGroupId('unassigned')
+              setSelectedGroupId(targetGroupId)
             }
+
             showToast(`已删除分组「${deletedName}」`, 'success')
           } else {
             showToast(json.error || '删除分组失败', 'error')
@@ -2715,29 +2729,38 @@ async function executeTask(taskId: string) {
 }
 
 export function updateTaskInStore(taskId: string, patch: Partial<TaskRecord>) {
-  const { tasks, setTasks } = useStore.getState()
+  const { tasks, setTasks, selectedGroupId } = useStore.getState()
   const prevTask = tasks.find((t) => t.id === taskId)
   if (prevTask) {
-    const updated = tasks.map((t) =>
-      t.id === taskId ? { ...t, ...patch } : t,
-    )
+    const nextTask = { ...prevTask, ...patch }
+    const taskGroupId = nextTask.groupId ?? null
+
+    const shouldBelongToCurrentGroup =
+      selectedGroupId === 'all' ||
+      (selectedGroupId === 'unassigned' && taskGroupId == null) ||
+      (selectedGroupId !== 'all' &&
+        selectedGroupId !== 'unassigned' &&
+        taskGroupId === selectedGroupId)
+
+    const updated = shouldBelongToCurrentGroup
+      ? tasks.map((t) => t.id === taskId ? nextTask : t)
+      : tasks.filter((t) => t.id !== taskId)
+
     setTasks(updated)
     maybeOpenSupportPrompt(tasks, updated, taskId)
-    const task = updated.find((t) => t.id === taskId)
-    if (task) {
-      // 关键属性改变或进入终态检测，避免在轮询进度（elapsed/progress）时进行频繁的网络数据库写入
-      const hasStatusChanged = patch.status !== undefined && prevTask.status !== patch.status
-      const hasCostChanged = patch.cost !== undefined && prevTask.cost !== patch.cost
-      const hasGroupChanged = patch.groupId !== undefined && prevTask.groupId !== patch.groupId
-      const hasFavoriteChanged = patch.isFavorite !== undefined && prevTask.isFavorite !== patch.isFavorite
-      const isTerminated = task.status !== 'running'
-      const isNewImageUploaded = patch.inputImageIds !== undefined || patch.maskImageId !== undefined
+    
+    // 关键属性改变或进入终态检测，避免在轮询进度（elapsed/progress）时进行频繁的网络数据库写入
+    const hasStatusChanged = patch.status !== undefined && prevTask.status !== patch.status
+    const hasCostChanged = patch.cost !== undefined && prevTask.cost !== patch.cost
+    const hasGroupChanged = patch.groupId !== undefined && prevTask.groupId !== patch.groupId
+    const hasFavoriteChanged = patch.isFavorite !== undefined && prevTask.isFavorite !== patch.isFavorite
+    const isTerminated = nextTask.status !== 'running'
+    const isNewImageUploaded = patch.inputImageIds !== undefined || patch.maskImageId !== undefined
 
-      const shouldSyncToDb = hasStatusChanged || hasCostChanged || hasGroupChanged || hasFavoriteChanged || isTerminated || isNewImageUploaded
+    const shouldSyncToDb = hasStatusChanged || hasCostChanged || hasGroupChanged || hasFavoriteChanged || isTerminated || isNewImageUploaded
 
-      if (shouldSyncToDb) {
-        putTask(task)
-      }
+    if (shouldSyncToDb) {
+      putTask(nextTask)
     }
   } else {
     // 补救性后台更新：如果当前展示的 tasks 列表里没有这个任务（比如它属于其他分组，或者正在分页加载中），我们直接去数据库捞出这个任务，应用补丁，并存回数据库！
