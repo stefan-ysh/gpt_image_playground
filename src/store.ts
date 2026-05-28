@@ -1087,6 +1087,8 @@ export const useStore = create<AppState>()(
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
       selectedGroupId: 'unassigned',
       setSelectedGroupId: (id) => {
+        // 如果切换的分组已经是当前处于激活状态的分组，直接拦截，避免重复发起无意义的网络请求
+        if (id === useStore.getState().selectedGroupId) return
         set({ selectedGroupId: id })
         void useStore.getState().loadMoreTasks(id, 1, false)
       },
