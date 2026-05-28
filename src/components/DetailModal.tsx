@@ -571,12 +571,14 @@ export default function DetailModal() {
           )}
           {(isTaskRunning(task.status) || isFalReconnecting) && (
             <>
-              <div className="absolute left-4 top-4 flex items-center gap-1 bg-black/50 text-white text-xs px-2 py-0.5 rounded backdrop-blur-sm font-mono">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                {formatDuration()}
-              </div>
+              {formatDuration() && (
+                <div className="absolute left-4 top-4 flex items-center gap-1 bg-black/50 text-white text-xs px-2 py-0.5 rounded backdrop-blur-sm font-mono">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {formatDuration()}
+                </div>
+              )}
               {isTaskRunning(task.status) && streamPreviewLen > 0 && (
                 <>
                   {currentStreamPreviewSrc ? (
@@ -935,7 +937,7 @@ export default function DetailModal() {
                 <div className="flex items-center justify-between gap-3 border-b border-gray-100 py-3 text-xs dark:border-white/[0.08]">
                   <span className="text-gray-600 dark:text-gray-500">耗时</span>
                   <span className="font-medium">
-                    {formatDuration()}
+                    {formatDuration() || (isTaskRunning(task.status) ? '排队中...' : '—')}
                   </span>
                 </div>
               {/* 费用 */}

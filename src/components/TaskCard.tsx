@@ -333,12 +333,12 @@ export default function TaskCard({
       if (task.submittedAt != null) {
         seconds = Math.max(0, Math.floor((now - task.submittedAt) / 1000))
       } else {
-        return '00:00'
+        return null
       }
     } else if (task.elapsed != null) {
       seconds = Math.floor(task.elapsed / 1000)
     } else {
-      return '00:00'
+      return null
     }
     const mm = String(Math.floor(seconds / 60)).padStart(2, '0')
     const ss = String(seconds % 60).padStart(2, '0')
@@ -683,16 +683,16 @@ export default function TaskCard({
               />
             </svg>
           )} */}
-          {/* 运行中显示耗时，完成后显示封面图比例与分辨率标签 */}
+          {/* 运行中且已提交时显示耗时，完成后显示封面图比例与分辨率标签 */}
           <div className="absolute top-1.5 left-1.5 flex items-center gap-1">
-            {showRunningTimer || !isTaskDone(task.status) || !coverRatio || !coverSize ? (
+            {duration ? (
               <span className="flex items-center gap-1 bg-black/50 text-white text-[10px] sm:text-xs px-1.5 py-0.5 rounded backdrop-blur-sm font-mono">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 {duration}
               </span>
-            ) : (
+            ) : isTaskDone(task.status) && coverRatio && coverSize ? (
               <>
                 <span className="bg-black/50 text-white text-[10px] sm:text-xs px-1.5 py-0.5 rounded backdrop-blur-sm font-mono">
                   {coverRatio}
@@ -701,7 +701,7 @@ export default function TaskCard({
                   {coverSize}
                 </span>
               </>
-            )}
+            ) : null}
           </div>
         </div>
 
