@@ -130,28 +130,77 @@ export async function getImage(id: string): Promise<StoredImage | undefined> {
   return undefined
 }
 
-export async function getStoredImageThumbnail(id: string): Promise<StoredImageThumbnail | undefined> {
-  if (typeof id === 'string' && (/^https?:\/\//i.test(id) || id.startsWith('/') || id.includes('uploads/'))) {
-    return { id, thumbnailDataUrl: normalizeCosUrlToProxy(id), thumbnailVersion: THUMBNAIL_VERSION }
-  }
+let thumbnailBatchQueue: string[] = []
+let thumbnailBatchResolvers: Map<string, Array<{ resolve: (val: any) => void; reject: (err: any) => void }>> = new Map()
+let thumbnailBatchTimer: any = null
+
+async function flushThumbnailBatch() {
+  const ids = [...thumbnailBatchQueue]
+  thumbnailBatchQueue = []
+  thumbnailBatchTimer = null
+
+  if (ids.length === 0) return
+
+  const resolversMap = new Map(thumbnailBatchResolvers)
+  thumbnailBatchResolvers.clear()
+
   try {
-    const res = await fetch(`/api/images/${encodeURIComponent(id)}`, {
+    const res = await fetch(`/api/images/batch?ids=${encodeURIComponent(ids.join(','))}`, {
       credentials: 'include',
     })
     const json = await res.json()
     if (json.success) {
-      return {
-        id,
-        thumbnailDataUrl: normalizeCosUrlToProxy(json.data.thumbnailDataUrl),
-        width: json.data.width,
-        height: json.data.height,
-        thumbnailVersion: json.data.thumbnailVersion,
+      const dataList = json.data as any[]
+      const dataMap = new Map(dataList.map((item) => [item.id, item]))
+
+      for (const id of ids) {
+        const item = dataMap.get(id)
+        const resolvers = resolversMap.get(id) ?? []
+        if (item) {
+          const rec = {
+            id,
+            thumbnailDataUrl: normalizeCosUrlToProxy(item.thumbnailDataUrl),
+            width: item.width,
+            height: item.height,
+            thumbnailVersion: item.thumbnailVersion,
+          }
+          resolvers.forEach((r) => r.resolve(rec))
+        } else {
+          resolvers.forEach((r) => r.resolve(undefined))
+        }
       }
+    } else {
+      throw new Error(json.error || 'Batch fetch failed')
     }
   } catch (e) {
-    console.error('Failed to get image thumbnail:', e)
+    console.error('Failed to batch fetch fresh thumbnails:', e)
+    for (const id of ids) {
+      const resolvers = resolversMap.get(id) ?? []
+      resolvers.forEach((r) => r.resolve(undefined))
+    }
   }
-  return undefined
+}
+
+export async function getStoredImageThumbnail(id: string): Promise<StoredImageThumbnail | undefined> {
+  if (typeof id === 'string' && (/^https?:\/\//i.test(id) || id.startsWith('/') || id.includes('uploads/'))) {
+    return { id, thumbnailDataUrl: normalizeCosUrlToProxy(id), thumbnailVersion: THUMBNAIL_VERSION }
+  }
+
+  return new Promise((resolve, reject) => {
+    let resolvers = thumbnailBatchResolvers.get(id)
+    if (!resolvers) {
+      resolvers = []
+      thumbnailBatchResolvers.set(id, resolvers)
+    }
+    resolvers.push({ resolve, reject })
+
+    if (!thumbnailBatchQueue.includes(id)) {
+      thumbnailBatchQueue.push(id)
+    }
+
+    if (thumbnailBatchTimer) clearTimeout(thumbnailBatchTimer)
+    thumbnailBatchTimer = setTimeout(flushThumbnailBatch, 40)
+  })
 }
 
 export async function getStoredFreshImageThumbnail(id: string): Promise<StoredImageThumbnail | undefined> {
