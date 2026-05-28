@@ -160,19 +160,19 @@ export function getCreativeGeneratingText(status: TaskStatus, elapsedSeconds: nu
         return getTaskStatusText(status)
     }
 
-    if (elapsedSeconds < 5) {
-        return '正在准备创作' // Creating image (0-4s)
-    } else if (elapsedSeconds < 10) {
-        return '正在构图起稿' // Sketching it out (5-9s)
-    } else if (elapsedSeconds < 16) {
-        return '正在铺设初色' // Making the first draft (10-15s)
-    } else if (elapsedSeconds < 23) {
-        return '正在布景塑造' // Setting the scene (16-22s)
-    } else if (elapsedSeconds < 30) {
-        return '正在精细润色' // Polishing details (23-29s)
-    } else if (elapsedSeconds < 37) {
-        return '正在画龙点睛' // Finishing up (30-36s)
+    if (elapsedSeconds < 10) {
+        return '正在准备创作' // Creating image (0-9s)
+    } else if (elapsedSeconds < 20) {
+        return '正在构图起稿' // Sketching it out (10-19s)
+    } else if (elapsedSeconds < 35) {
+        return '正在铺设初色' // Making the first draft (20-34s)
+    } else if (elapsedSeconds < 50) {
+        return '正在布景塑造' // Setting the scene (35-49s)
+    } else if (elapsedSeconds < 70) {
+        return '正在精细润色' // Polishing details (50-69s)
+    } else if (elapsedSeconds < 85) {
+        return '正在画龙点睛' // Finishing up (70-84s)
     } else {
-        return '最终润色中...' // Adding final touches (37s+)
+        return '最终润色中...' // Adding final touches (85s+)
     }
 }
