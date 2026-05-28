@@ -70,6 +70,7 @@ export default function TaskCard({
   disableSwipe,
 }: Props) {
   const [thumbSrc, setThumbSrc] = useState<string>('')
+  const [isVisible, setIsVisible] = useState(false)
   const [thumbSrcLoaded, setThumbSrcLoaded] = useState(false)
   const [thumbSrcFailed, setThumbSrcFailed] = useState(false)
   const [coverRatio, setCoverRatio] = useState<string>('')
@@ -83,6 +84,28 @@ export default function TaskCard({
   const [isQueryingResult, setIsQueryingResult] = useState(false)
   const [isTransferringImages, setIsTransferringImages] = useState(false)
   const toggleTaskSelection = useStore((s) => s.toggleTaskSelection)
+
+  // 利用 IntersectionObserver 监控卡片是否可见，实现真正意义上的视口接口懒加载 (真·滚动按需分页加载)
+  useEffect(() => {
+    setIsVisible(false)
+    const el = cardRef.current
+    if (!el) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          setIsVisible(true)
+          observer.unobserve(el)
+        }
+      },
+      { rootMargin: '260px' } // 提前 260px 预加载，滚动时体验丝滑不可见延迟
+    )
+    observer.observe(el)
+
+    return () => {
+      observer.unobserve(el)
+    }
+  }, [task.id])
   const settings = useStore((s) => s.settings)
   const streamPreviewSrc = useStore((s) => s.streamPreviews[task.id] || '')
   const showToast = useStore((s) => s.showToast)
@@ -263,6 +286,8 @@ export default function TaskCard({
 
   // 加载缩略图
   useEffect(() => {
+    if (!isVisible) return
+
     setCoverRatio('')
     setCoverSize('')
     setThumbSrc('')
@@ -276,6 +301,7 @@ export default function TaskCard({
     const applyThumbnail = (thumbnail: { dataUrl: string; width?: number; height?: number }) => {
       if (cancelled) return
       setThumbSrc(thumbnail.dataUrl)
+      // 移除这里的同步 setThumbSrcLoaded(true)，使其能平滑展示骨架屏，直至浏览器真正的 onLoad 事件触发后再隐退
       if (thumbnail.width && thumbnail.height) {
         setCoverRatio(formatImageRatio(thumbnail.width, thumbnail.height))
         setCoverSize(`${thumbnail.width}×${thumbnail.height}`)
@@ -290,13 +316,16 @@ export default function TaskCard({
       }).catch(() => {
         if (!cancelled) setThumbSrc('')
       })
+    } else {
+      // 任务已完成但没有任何输出图时，将失败状态设为 true，防止骨架屏死锁常驻
+      setThumbSrcFailed(true)
     }
 
     return () => {
       cancelled = true
       unsubscribe?.()
     }
-  }, [task.outputImages])
+  }, [task.outputImages, isVisible])
 
   const duration = (() => {
     let seconds: number
@@ -590,21 +619,40 @@ export default function TaskCard({
               </span>
             </div>
           )}
-          {task.status === 'done' && thumbSrc && !thumbSrcFailed && (
+          {task.status === 'done' && (
             <>
-              {!thumbSrcLoaded && <div className="absolute inset-0 shimmer-skeleton z-10 rounded-lg pointer-events-none"/>}
-              <img
-                src={thumbSrc}
-                data-image-id={task.outputImages[0]}
-                data-output-image-ids={task.outputImages.join(',')}
-                className="saveable-image w-full h-full object-cover transition-transform duration-500 hover:scale-105"
-                loading="lazy"
-                onLoad={handleThumbLoad}
-                onError={handleThumbError}
-                alt=""
-              />
-              {task.outputImages.length > 1 && (
-                <span className="absolute bottom-1.5 right-1.5 bg-black/65 text-white text-[10px] sm:text-xs px-1.5 py-0.5 rounded backdrop-blur-xs font-semibold z-20 shadow-sm border border-white/5">
+              {/* 只要缩略图没有成功载入并显示，就大方地展示全覆满的微光骨架屏 */}
+              {!thumbSrcLoaded && !thumbSrcFailed && (
+                <div className="absolute inset-0 shimmer-skeleton z-10 rounded-lg pointer-events-none" />
+              )}
+              
+              {/* 缩略图加载失败时的精美占位 */}
+              {thumbSrcFailed && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-950/20 text-slate-400">
+                  <svg className="w-8 h-8 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span className="text-[10px] mt-1 opacity-70">加载失败</span>
+                </div>
+              )}
+
+              {thumbSrc && !thumbSrcFailed && (
+                <img
+                  key={thumbSrc}
+                  src={thumbSrc}
+                  data-image-id={task.outputImages[0]}
+                  data-output-image-ids={task.outputImages.join(',')}
+                  className={`saveable-image w-full h-full object-cover transition-opacity duration-300 hover:scale-105 ${
+                    thumbSrcLoaded ? 'opacity-100' : 'opacity-0'
+                  }`}
+                  loading="lazy"
+                  onLoad={handleThumbLoad}
+                  onError={handleThumbError}
+                  alt=""
+                />
+              )}
+              {task.outputImages.length > 1 && thumbSrcLoaded && (
+                <span className="absolute bottom-1.5 right-1.5 bg-black/65 text-white text-[10px] sm:text-xs px-1.5 py-0.5 rounded backdrop-blur-xs font-semibold z-20 shadow-sm border border-white/5 animate-fade-in">
                   {task.outputImages.length} 张
                 </span>
               )}
