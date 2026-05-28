@@ -247,10 +247,13 @@ export default function DetailModal() {
 
   const formatDuration = () => {
     if (isTaskRunning(task.status) || isFalReconnecting || isCustomReconnecting) {
-      const seconds = Math.max(0, Math.floor((now - task.createdAt) / 1000))
-      const mm = String(Math.floor(seconds / 60)).padStart(2, '0')
-      const ss = String(seconds % 60).padStart(2, '0')
-      return `${mm}:${ss}`
+      if (task.submittedAt != null) {
+        const seconds = Math.max(0, Math.floor((now - task.submittedAt) / 1000))
+        const mm = String(Math.floor(seconds / 60)).padStart(2, '0')
+        const ss = String(seconds % 60).padStart(2, '0')
+        return `${mm}:${ss}`
+      }
+      return '00:00'
     }
     if (task.elapsed == null) return null
     const seconds = Math.floor(task.elapsed / 1000)

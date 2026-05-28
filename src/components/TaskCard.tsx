@@ -330,7 +330,11 @@ export default function TaskCard({
   const duration = (() => {
     let seconds: number
     if (isTaskRunning(task.status) || task.falRecoverable || task.customRecoverable) {
-      seconds = Math.floor((now - task.createdAt) / 1000)
+      if (task.submittedAt != null) {
+        seconds = Math.max(0, Math.floor((now - task.submittedAt) / 1000))
+      } else {
+        return '00:00'
+      }
     } else if (task.elapsed != null) {
       seconds = Math.floor(task.elapsed / 1000)
     } else {
@@ -574,7 +578,12 @@ export default function TaskCard({
                   />
                 </svg>
                 <span className="text-[10px] sm:text-xs text-white font-semibold tracking-wider">
-                  {getCreativeGeneratingText(task.status, Math.max(0, Math.floor((now - now % 1000 - task.createdAt) / 1000)))}
+                  {getCreativeGeneratingText(
+                    task.status,
+                    task.submittedAt != null
+                      ? Math.max(0, Math.floor((now - now % 1000 - task.submittedAt) / 1000))
+                      : 0
+                  )}
                 </span>
               </div>
             </div>
