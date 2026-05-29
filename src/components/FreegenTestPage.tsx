@@ -73,7 +73,7 @@ export default function FreegenTestPage() {
 
       setLogs(`REQUEST:\n${JSON.stringify(payload, null, 2)}`);
 
-      const res = await fetch("/api/freegen-test/generate", {
+      const res = await fetch("/api/freegen/generate", {
         method: "POST",
         headers: {
           "content-type": "application/json",

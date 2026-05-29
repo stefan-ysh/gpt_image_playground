@@ -1,4 +1,4 @@
-import type { TaskStatus } from '../types'
+import type { TaskRecord, TaskStatus } from '../types'
 
 export const RUNNING_TASK_STATUSES: TaskStatus[] = [
     'running',
@@ -146,6 +146,197 @@ export function getTaskStatusDescription(status: TaskStatus) {
             return '任务已完成。'
         default:
             return ''
+    }
+}
+
+type TaskStatusDisplayInput = Pick<TaskRecord, 'status'> & Partial<Pick<
+    TaskRecord,
+    | 'error'
+    | 'providerStatus'
+    | 'submitStatus'
+    | 'lastProviderError'
+    | 'providerTaskId'
+    | 'workerId'
+>>
+
+export type TaskStatusTone = 'neutral' | 'running' | 'saving' | 'success' | 'warning' | 'error'
+
+export interface TaskStatusDisplay {
+    text: string
+    description: string
+    tone: TaskStatusTone
+    rawStatus: string
+}
+
+function normalizeBackendStatus(value: string | null | undefined) {
+    return (value || '').trim().toLowerCase()
+}
+
+function getProviderStatusText(providerStatus: string | null | undefined) {
+    const status = normalizeBackendStatus(providerStatus)
+
+    if (!status) return ''
+
+    if (['created', 'queued', 'pending', 'waiting'].includes(status)) {
+        return '服务商排队中'
+    }
+
+    if (['submitting', 'submit'].includes(status)) {
+        return '正在提交服务商'
+    }
+
+    if (['submitted', 'accepted', 'received'].includes(status)) {
+        return '服务商已接收'
+    }
+
+    if (['processing', 'running', 'in_progress', 'generating'].includes(status)) {
+        return '服务商生成中'
+    }
+
+    if (['completed', 'complete', 'success', 'succeeded'].includes(status)) {
+        return '服务商已完成'
+    }
+
+    if (['failed', 'error'].includes(status)) {
+        return '服务商失败'
+    }
+
+    if (['cancelled', 'canceled'].includes(status)) {
+        return '服务商已取消'
+    }
+
+    if (status === 'polling_retryable') {
+        return '查询中断，自动恢复中'
+    }
+
+    if (status === 'submit_unknown') {
+        return '提交状态待确认'
+    }
+
+    return `服务商：${providerStatus}`
+}
+
+function getSubmitStatusText(submitStatus: string | null | undefined) {
+    const status = normalizeBackendStatus(submitStatus)
+
+    if (!status) return ''
+    if (['waiting', 'created', 'queued'].includes(status)) return '等待后台提交'
+    if (['running', 'submitting'].includes(status)) return '正在提交'
+    if (['success', 'succeeded', 'submitted'].includes(status)) return '提交成功'
+    if (['failed', 'error'].includes(status)) return '提交失败'
+
+    return `提交：${submitStatus}`
+}
+
+function appendBackendStatus(description: string, task: TaskStatusDisplayInput) {
+    const parts = [
+        `任务状态 ${task.status}`,
+        task.providerStatus ? `服务商状态 ${task.providerStatus}` : '',
+        task.submitStatus ? `提交状态 ${task.submitStatus}` : '',
+    ].filter(Boolean)
+
+    return parts.length ? `${description}（${parts.join(' / ')}）` : description
+}
+
+export function getTaskStatusDisplay(task: TaskStatusDisplayInput): TaskStatusDisplay {
+    const providerText = getProviderStatusText(task.providerStatus)
+    const submitText = getSubmitStatusText(task.submitStatus)
+    const fallbackText = getTaskStatusText(task.status)
+    const fallbackDescription = getTaskStatusDescription(task.status)
+
+    let text = fallbackText
+    let description = fallbackDescription
+    let tone: TaskStatusTone = 'neutral'
+
+    switch (task.status) {
+        case 'created':
+            text = task.workerId ? '等待后台继续处理' : '等待后台接管'
+            description = '任务已写入数据库，等待 Worker 读取并锁定执行。'
+            tone = 'neutral'
+            break
+        case 'queued':
+            text = '后台队列中'
+            description = 'Worker 已识别任务，正在等待可执行窗口。'
+            tone = 'neutral'
+            break
+        case 'submitting':
+            text = providerText || submitText || '正在提交服务商'
+            description = 'Worker 正在向当前模型服务提交生成请求。'
+            tone = 'running'
+            break
+        case 'submitted':
+            text = providerText || '服务商已接收'
+            description = task.providerTaskId
+                ? '服务商已返回任务 ID，后台将继续查询生成状态。'
+                : '请求已提交，等待服务商返回任务 ID。'
+            tone = 'running'
+            break
+        case 'polling':
+            text = providerText || '服务商生成中'
+            description = '后台正在按服务商任务状态查询生成结果。'
+            tone = 'running'
+            break
+        case 'polling_retryable':
+            text = providerText || '查询中断，自动恢复中'
+            description = '查询服务商状态时遇到临时错误，后台会按退避策略继续重试。'
+            tone = 'warning'
+            break
+        case 'succeeded_raw':
+            text = '已生成，准备保存'
+            description = '服务商已返回图片，后台正在准备转存和写入结果。'
+            tone = 'saving'
+            break
+        case 'storing_images':
+            text = '正在保存图片'
+            description = '图片正在转存到 COS，并同步任务图片引用。'
+            tone = 'saving'
+            break
+        case 'transfer_pending':
+            text = '保存失败，等待重试'
+            description = '图片已生成，但转存到 COS 时遇到临时问题，后台会继续重试。'
+            tone = 'warning'
+            break
+        case 'submit_unknown':
+            text = '提交状态待确认'
+            description = '提交服务商时状态不确定。为避免重复扣费，需要手动确认或同步一次。'
+            tone = 'warning'
+            break
+        case 'provider_failed':
+            text = '服务商生成失败'
+            description = task.lastProviderError || task.error || '服务商明确返回失败。'
+            tone = 'error'
+            break
+        case 'error':
+            text = task.error === '已停止生成。' ? '已停止' : '任务失败'
+            description = task.error || '任务失败。'
+            tone = 'error'
+            break
+        case 'done':
+            text = '完成'
+            description = '任务已完成，结果图片已写入本地记录。'
+            tone = 'success'
+            break
+        case 'cancelled':
+            text = '已取消'
+            description = '任务已取消。'
+            tone = 'neutral'
+            break
+        case 'running':
+            text = providerText || '生成中'
+            description = '前端直连生成任务正在运行。'
+            tone = 'running'
+            break
+        default:
+            text = providerText || fallbackText
+            description = fallbackDescription
+            tone = isTaskFailed(task.status) ? 'error' : isTaskRunning(task.status) ? 'running' : 'neutral'
+    }
+
+    return {
+        text,
+        description: appendBackendStatus(description, task),
+        tone,
+        rawStatus: task.providerStatus ? `${task.status}/${task.providerStatus}` : task.status,
     }
 }
 

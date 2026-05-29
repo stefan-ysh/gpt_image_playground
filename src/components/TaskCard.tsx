@@ -1,4 +1,4 @@
-import { canManualSyncTask, getTaskStatusDescription, getTaskStatusText, isSavingImageStatus, isTaskDone, isTaskFailed, isTaskRunning, getCreativeGeneratingText } from '@/lib/taskStatus'
+import { canManualSyncTask, getTaskStatusDisplay, isTaskDone, isTaskFailed, isTaskRunning } from '@/lib/taskStatus'
 import { useEffect, useRef, useState } from 'react'
 
 import type {ReactNode} from 'react'
@@ -57,6 +57,23 @@ function TaskActionButton({
       </ViewportTooltip>
     </span>
   )
+}
+
+function getStatusChipClass(tone: ReturnType<typeof getTaskStatusDisplay>['tone']) {
+  switch (tone) {
+    case 'running':
+      return 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300'
+    case 'saving':
+      return 'bg-cyan-50 text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-300'
+    case 'success':
+      return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+    case 'warning':
+      return 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'
+    case 'error':
+      return 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-300'
+    default:
+      return 'bg-gray-100 text-gray-600 dark:bg-white/[0.04] dark:text-gray-300'
+  }
 }
 
 export default function TaskCard({
@@ -372,6 +389,7 @@ export default function TaskCard({
 
   const taskModel = task.apiModel || task.apiProfileSnapshot?.model || ''
   const showModel = Boolean(taskModel)
+  const statusDisplay = getTaskStatusDisplay(task)
   const isInterrupted = task.status === 'error' && task.error === '已停止生成。'
   const canQueryResult =
     canManualSyncTask(task.status) ||
@@ -578,12 +596,7 @@ export default function TaskCard({
                   />
                 </svg>
                 <span className="text-[10px] sm:text-xs text-white font-semibold tracking-wider">
-                  {getCreativeGeneratingText(
-                    task.status,
-                    task.submittedAt != null
-                      ? Math.max(0, Math.floor((now - now % 1000 - task.submittedAt) / 1000))
-                      : 0
-                  )}
+                  {statusDisplay.text}
                 </span>
               </div>
             </div>

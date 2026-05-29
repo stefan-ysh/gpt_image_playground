@@ -1,5 +1,5 @@
 import { DEFAULT_PARAMS, type AppSettings, type TaskParams } from '../types'
-import { getActiveApiProfile, APIMART_PROVIDER_ID } from './apiProfiles'
+import { getActiveApiProfile, APIMART_PROVIDER_ID, isFreegenProfile } from './apiProfiles'
 import { normalizeResolution } from './resolution'
 import { normalizeImageSize, isSupported4KRatio } from './size'
 
@@ -28,6 +28,13 @@ export function normalizeParamsForSettings(
 
   if (activeProfile.provider === 'fal') {
     if (!options.hasInputImages && nextParams.size === 'auto') nextParams.size = DEFAULT_FAL_IMAGE_SIZE
+    nextParams.moderation = DEFAULT_PARAMS.moderation
+    nextParams.output_compression = DEFAULT_PARAMS.output_compression
+  }
+
+  if (isFreegenProfile(activeProfile)) {
+    if (nextParams.size === 'auto') nextParams.size = '1:1'
+    nextParams.n = 1
     nextParams.moderation = DEFAULT_PARAMS.moderation
     nextParams.output_compression = DEFAULT_PARAMS.output_compression
   }

@@ -1,4 +1,4 @@
-import { canManualSyncTask, getTaskStatusDescription, getTaskStatusText, isTaskDone, isTaskFailed, isTaskRunning } from '@/lib/taskStatus'
+import { canManualSyncTask, getTaskStatusDisplay, isTaskDone, isTaskFailed, isTaskRunning } from '@/lib/taskStatus'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useCloseOnEscape } from '../hooks/useCloseOnEscape'
@@ -104,7 +104,7 @@ export default function DetailModal() {
   }, [detailTaskId])
 
   useEffect(() => {
-    if (task?.status !== 'running' && !(task?.status === 'error' && (task.falRecoverable || task.customRecoverable))) return
+    if (!task || (!isTaskRunning(task.status) && !(task.status === 'error' && (task.falRecoverable || task.customRecoverable)))) return
     const id = window.setInterval(() => setNow(Date.now()), 1000)
     setNow(Date.now())
     return () => window.clearInterval(id)
@@ -228,6 +228,7 @@ export default function DetailModal() {
   const showRevisedPrompt = Boolean(currentRevisedPrompt && currentRevisedPrompt !== task.prompt.trim())
   const showPromptWarning = false
   const taskModel = task.apiModel || task.apiProfileSnapshot?.model || ''
+  const statusDisplay = getTaskStatusDisplay(task)
   const isFalReconnecting = isTaskFailed(task.status) && task.falRecoverable
   const isCustomReconnecting = isTaskFailed(task.status) && task.customRecoverable
   const rawImageUrls = task.rawImageUrls ?? []
@@ -901,6 +902,16 @@ export default function DetailModal() {
             )}
 
             <div className="mb-4 space-y-3">
+              {/* 状态 */}
+              <div className="flex items-center justify-between gap-3 border-b border-gray-100 py-3 text-xs dark:border-white/[0.08]">
+                <span className="text-gray-600 dark:text-gray-500">状态</span>
+                <span
+                  className="min-w-0 truncate text-right font-medium text-gray-700 dark:text-gray-200"
+                  title={statusDisplay.description}
+                >
+                  {statusDisplay.text}
+                </span>
+              </div>
               {/* 模型 */}
               <div className="flex items-center justify-between gap-3 border-b border-gray-100 py-3 text-xs dark:border-white/[0.08]">
                 <span className="text-gray-600 dark:text-gray-500">模型</span>

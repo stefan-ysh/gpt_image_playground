@@ -4,7 +4,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 import { useHintTooltip } from '../hooks/useHintTooltip'
-import { APIMART_PROVIDER_ID, getActiveApiProfile, normalizeSettings } from '../lib/apiProfiles'
+import { APIMART_PROVIDER_ID, FREEGEN_MODEL, createDefaultFreegenProfile, getActiveApiProfile, isFreegenProfile, normalizeSettings } from '../lib/apiProfiles'
 import { getSafeBoundingClientRect } from '../lib/domRect'
 import { downloadImageIds, formatExportFileTime } from '../lib/downloadImages'
 import { DEFAULT_FAL_IMAGE_SIZE, getChangedParams, normalizeParamsForSettings } from '../lib/paramCompatibility'
@@ -367,6 +367,7 @@ export default function InputBar() {
   const replaceInputImage = useStore((s) => s.replaceInputImage)
   const removeInputImage = useStore((s) => s.removeInputImage)
   const clearInputImages = useStore((s) => s.clearInputImages)
+  const setInputImages = useStore((s) => s.setInputImages)
   const params = useStore((s) => s.params)
   const setParams = useStore((s) => s.setParams)
   const settings = useStore((s) => s.settings)
@@ -601,6 +602,7 @@ export default function InputBar() {
   }, [setPrompt])
   const activeProvider = activeProfile.provider
   const isFalProvider = activeProvider === 'fal'
+  const isZImageProvider = isFreegenProfile(activeProfile)
   const isFalTextToImage = isFalProvider && inputImages.length === 0
   const displaySize = isFalTextToImage && params.size === 'auto'
     ? DEFAULT_FAL_IMAGE_SIZE
@@ -625,8 +627,13 @@ export default function InputBar() {
         { label: '2k', value: '2k' },
         { label: '4k', value: '4k' },
       ]
-  const atImageLimit = inputImages.length >= API_MAX_IMAGES
-  const uploadImageTooltipText = atImageLimit ? `参考图数量已达上限（${API_MAX_IMAGES} 张），无法继续添加` : '上传图片'
+  const maxReferenceImages = isZImageProvider ? 1 : API_MAX_IMAGES
+  const atImageLimit = inputImages.length >= maxReferenceImages
+  const uploadImageTooltipText = atImageLimit
+    ? isZImageProvider
+      ? 'z-image 目前最多支持 1 张参考图'
+      : `参考图数量已达上限（${API_MAX_IMAGES} 张），无法继续添加`
+    : '上传图片'
   const sizeHint = useHintTooltip({ enabled: () => isFalTextToImage })
   const qualityHint = useHintTooltip({ enabled: () => isFalProvider })
 
@@ -736,15 +743,19 @@ export default function InputBar() {
   const handleFiles = async (files: FileList | File[]) => {
     try {
       const currentCount = useStore.getState().inputImages.length
-      if (currentCount >= API_MAX_IMAGES) {
+      const active = getActiveApiProfile(useStore.getState().settings)
+      const maxImages = isFreegenProfile(active) ? 1 : API_MAX_IMAGES
+      if (currentCount >= maxImages) {
         useStore.getState().showToast(
-          `参考图数量已达上限（${API_MAX_IMAGES} 张），无法继续添加`,
+          isFreegenProfile(active)
+            ? 'z-image 目前最多支持 1 张参考图，请先移除当前参考图再上传。'
+            : `参考图数量已达上限（${API_MAX_IMAGES} 张），无法继续添加`,
           'error',
         )
         return
       }
 
-      const remaining = API_MAX_IMAGES - currentCount
+      const remaining = maxImages - currentCount
       const accepted = Array.from(files).filter((f) => f.type.startsWith('image/'))
       const toAdd = accepted.slice(0, remaining)
       const discarded = accepted.length - toAdd.length
@@ -755,7 +766,9 @@ export default function InputBar() {
 
       if (discarded > 0) {
         useStore.getState().showToast(
-          `已达上限 ${API_MAX_IMAGES} 张，${discarded} 张图片被丢弃`,
+          isFreegenProfile(active)
+            ? `z-image 只支持 1 张参考图，${discarded} 张图片被丢弃`
+            : `已达上限 ${API_MAX_IMAGES} 张，${discarded} 张图片被丢弃`,
           'error',
         )
       }
@@ -778,6 +791,62 @@ export default function InputBar() {
   const commitReferenceEditChoice = useCallback((choice: 'replace-reference' | 'add-mask', remember?: boolean) => {
     if (remember) setSettings({ referenceImageEditAction: choice })
   }, [setSettings])
+
+  const switchToGptImageModel = useCallback(() => {
+    const normalized = normalizeSettings(settings)
+    const active = normalized.profiles.find((profile) => profile.id === normalized.activeProfileId) ?? activeProfile
+
+    if (!isFreegenProfile(active)) {
+      const updatedProfiles = normalized.profiles.map((profile) =>
+        profile.id === active.id ? { ...profile, model: 'gpt-image-2' } : profile
+      )
+      setSettings({ profiles: updatedProfiles })
+      setShowModelDropdown(false)
+      showToast('已切换模型至 gpt-image-2', 'success')
+      return
+    }
+
+    const targetProfile =
+      normalized.profiles.find((profile) => profile.provider === APIMART_PROVIDER_ID) ??
+      normalized.profiles.find((profile) => !isFreegenProfile(profile)) ??
+      normalized.profiles[0]
+
+    if (!targetProfile) return
+
+    const updatedProfiles = normalized.profiles.map((profile) =>
+      profile.id === targetProfile.id ? { ...profile, model: 'gpt-image-2' } : profile
+    )
+    setSettings({
+      profiles: updatedProfiles,
+      activeProfileId: targetProfile.id,
+    })
+    setShowModelDropdown(false)
+    showToast('已切换模型至 gpt-image-2', 'success')
+  }, [activeProfile, setSettings, settings, showToast])
+
+  const switchToZImageModel = useCallback(() => {
+    const normalized = normalizeSettings(settings)
+    const existing = normalized.profiles.find((profile) => isFreegenProfile(profile))
+    const freegenProfile = existing ?? createDefaultFreegenProfile()
+    const profiles = existing
+      ? normalized.profiles.map((profile) => profile.id === existing.id ? freegenProfile : profile)
+      : [...normalized.profiles, freegenProfile]
+
+    setSettings({
+      profiles,
+      activeProfileId: freegenProfile.id,
+    })
+    if (params.size === 'auto') setParams({ size: '1:1' })
+    if (inputImages.length > 1) {
+      const [firstImage] = inputImages
+      setInputImages(firstImage ? [firstImage] : [])
+      setMaskEditorImageId(firstImage?.id ?? null)
+      showToast('z-image 目前最多支持 1 张参考图，已保留第一张。', 'info')
+    } else {
+      showToast('已切换模型至 z-image', 'success')
+    }
+    setShowModelDropdown(false)
+  }, [inputImages, params.size, setInputImages, setMaskEditorImageId, setParams, setSettings, settings, showToast])
 
   const handleEditReferenceImage = useCallback((img: (typeof inputImages)[number], idx: number, isMaskTarget: boolean) => {
     if (isMaskTarget) {
@@ -1807,27 +1876,21 @@ export default function InputBar() {
                       style={getDropdownPortalStyle(modelDropdownRef.current, 208)}
                     >
                       {[
-                        { label: 'GPT-Image-2', value: 'gpt-image-2' },
+                        { label: 'GPT-Image-2', value: 'gpt-image-2', onClick: switchToGptImageModel },
+                        { label: 'z-image', value: FREEGEN_MODEL, onClick: switchToZImageModel },
                       ].map((opt) => (
                         <button
                           key={opt.value}
                           type="button"
-                          onClick={() => {
-                            const updatedProfiles = settings.profiles.map(p =>
-                              p.id === settings.activeProfileId ? { ...p, model: opt.value } : p
-                            )
-                            setSettings({ profiles: updatedProfiles })
-                            setShowModelDropdown(false)
-                            showToast(`已切换模型至 ${opt.value}`, 'success')
-                          }}
+                          onClick={opt.onClick}
                           className={`w-full px-2.5 py-2 text-left text-xs rounded-lg transition-colors flex items-center justify-between ${
-                            activeProfile.model === opt.value
+                            (opt.value === FREEGEN_MODEL ? isZImageProvider : activeProfile.model === opt.value && !isZImageProvider)
                               ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300 font-semibold'
                               : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/[0.04]'
                           }`}
                         >
                           <span className="truncate">{opt.label}</span>
-                          {activeProfile.model === opt.value && <span className="text-[10px] flex-shrink-0 ml-1">✓</span>}
+                          {(opt.value === FREEGEN_MODEL ? isZImageProvider : activeProfile.model === opt.value && !isZImageProvider) && <span className="text-[10px] flex-shrink-0 ml-1">✓</span>}
                         </button>
                       ))}
                     </div>

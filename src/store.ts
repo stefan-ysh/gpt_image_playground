@@ -25,7 +25,7 @@ import type {
   StoredImage
 } from './types'
 import { DEFAULT_PARAMS } from './types'
-import { DEFAULT_SETTINGS, getActiveApiProfile, getCustomProviderDefinition, normalizeSettings, validateApiProfile } from './lib/apiProfiles'
+import { DEFAULT_SETTINGS, getActiveApiProfile, getCustomProviderDefinition, isFreegenProfile, normalizeSettings, validateApiProfile } from './lib/apiProfiles'
 import { dismissAllTooltips } from './lib/tooltipDismiss'
 import { remapImageMentionsForOrder, replaceImageMentionsForApi } from './lib/promptImageMentions'
 import {
@@ -2303,6 +2303,11 @@ export async function submitTask(
 
   if (validationError) {
     showToast(validationError, 'error')
+    return
+  }
+
+  if (isFreegenProfile(activeProfile) && inputImages.length > 1) {
+    showToast('z-image 目前最多只支持 1 张参考图，请移除多余图片后重试。', 'error')
     return
   }
 

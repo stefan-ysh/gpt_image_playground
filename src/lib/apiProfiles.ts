@@ -34,6 +34,10 @@ export const DEFAULT_OPENAI_PROFILE_ID = 'default-openai'
 export const DEFAULT_API_TIMEOUT = 600
 
 export const APIMART_PROVIDER_ID = 'custom-dragoncode-gpt-image-2'
+export const FREEGEN_PROVIDER_ID = 'freegen-z-image'
+export const FREEGEN_MODEL = 'z-image'
+export const FREEGEN_BASE_URL = 'https://freegen.app'
+export const FREEGEN_INTERNAL_API_KEY = 'internal-freegen'
 
 export function getDefaultApiKey(): string {
   return readRuntimeEnv(process.env.NEXT_PUBLIC_DEFAULT_API_KEY || '')
@@ -338,6 +342,27 @@ export function createDefaultAPIMartProfile(overrides: Partial<ApiProfile> = {})
   }
 }
 
+export function createDefaultFreegenProfile(overrides: Partial<ApiProfile> = {}): ApiProfile {
+  return {
+    id: 'freegen-z-image',
+    name: 'z-image',
+    provider: FREEGEN_PROVIDER_ID,
+    baseUrl: FREEGEN_BASE_URL,
+    model: FREEGEN_MODEL,
+    timeout: DEFAULT_API_TIMEOUT,
+    apiMode: 'images',
+    apiProxy: false,
+    streamImages: false,
+    streamPartialImages: 0,
+    apiKey: FREEGEN_INTERNAL_API_KEY,
+    ...overrides,
+  }
+}
+
+export function isFreegenProfile(profile: Pick<ApiProfile, 'provider' | 'model'> | null | undefined): boolean {
+  return profile?.provider === FREEGEN_PROVIDER_ID || profile?.model === FREEGEN_MODEL
+}
+
 export function switchApiProfileProvider(profile: ApiProfile, provider: ApiProvider, customProvider?: CustomProviderDefinition): ApiProfile {
   if (customProvider) {
     const isAPIMart = customProvider.id === APIMART_PROVIDER_ID
@@ -367,6 +392,26 @@ export function normalizeApiProfile(input: unknown, fallback?: Partial<ApiProfil
   const record = input && typeof input === 'object' ? input as Record<string, unknown> : {}
   const rawProvider = typeof record.provider === 'string' ? record.provider : ''
   const inputBaseUrl = typeof record.baseUrl === 'string' ? record.baseUrl : (fallback?.baseUrl ?? '')
+  const inputModel = typeof record.model === 'string' ? record.model.trim() : ''
+  const isFreegen = rawProvider === FREEGEN_PROVIDER_ID || inputModel === FREEGEN_MODEL
+  if (isFreegen) {
+    const defaults = createDefaultFreegenProfile(fallback)
+    return {
+      ...defaults,
+      id: typeof record.id === 'string' && record.id.trim() ? record.id : defaults.id,
+      name: typeof record.name === 'string' && record.name.trim() ? record.name : defaults.name,
+      provider: FREEGEN_PROVIDER_ID,
+      baseUrl: FREEGEN_BASE_URL,
+      apiKey: FREEGEN_INTERNAL_API_KEY,
+      model: FREEGEN_MODEL,
+      timeout: typeof record.timeout === 'number' && Number.isFinite(record.timeout) ? record.timeout : defaults.timeout,
+      apiMode: 'images',
+      apiProxy: false,
+      streamImages: false,
+      streamPartialImages: 0,
+      providerDrafts: isRecord(record.providerDrafts) ? record.providerDrafts as ApiProfile['providerDrafts'] : defaults.providerDrafts,
+    }
+  }
   const isAPIMart = inputBaseUrl.toLowerCase().includes('dragoncode.codes/gpt-image') || inputBaseUrl.toLowerCase().includes('api.apimart.ai') || rawProvider === APIMART_PROVIDER_ID
 
   const provider: ApiProvider = isAPIMart ? APIMART_PROVIDER_ID : (rawProvider || APIMART_PROVIDER_ID)
@@ -444,6 +489,15 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
   // 自动将内置的 APIMart Profile 追加 to profiles 列表中（如果不存在）
   if (!syncedProfiles.some((p) => p.provider === APIMART_PROVIDER_ID)) {
     syncedProfiles.push(createDefaultAPIMartProfile())
+  }
+
+  const freegenIndex = syncedProfiles.findIndex((p) => isFreegenProfile(p))
+  if (freegenIndex >= 0) {
+    syncedProfiles[freegenIndex] = createDefaultFreegenProfile({
+      id: syncedProfiles[freegenIndex].id,
+      name: syncedProfiles[freegenIndex].name || 'z-image',
+      timeout: syncedProfiles[freegenIndex].timeout,
+    })
   }
 
   const activeProfileId = typeof record.activeProfileId === 'string' && syncedProfiles.some((p) => p.id === record.activeProfileId)
@@ -556,19 +610,20 @@ export function getActiveApiProfile(settings: Partial<AppSettings> | unknown): A
 
   return {
     ...profile,
-    baseUrl: typeof record.baseUrl === 'string' ? record.baseUrl : profile.baseUrl,
-    apiKey: profile.apiKey,
-    model: typeof record.model === 'string' && record.model.trim() ? record.model : profile.model,
+    baseUrl: isFreegenProfile(profile) ? FREEGEN_BASE_URL : typeof record.baseUrl === 'string' ? record.baseUrl : profile.baseUrl,
+    apiKey: isFreegenProfile(profile) ? FREEGEN_INTERNAL_API_KEY : profile.apiKey,
+    model: isFreegenProfile(profile) ? FREEGEN_MODEL : typeof record.model === 'string' && record.model.trim() ? record.model : profile.model,
     timeout: typeof record.timeout === 'number' && Number.isFinite(record.timeout) ? record.timeout : profile.timeout,
     apiMode: 'images',
-    apiProxy: typeof record.apiProxy === 'boolean' ? record.apiProxy : profile.apiProxy,
-    streamImages: typeof record.streamImages === 'boolean' ? record.streamImages : profile.streamImages,
-    streamPartialImages: normalizeStreamPartialImages(record.streamPartialImages, profile.streamPartialImages),
+    apiProxy: isFreegenProfile(profile) ? false : typeof record.apiProxy === 'boolean' ? record.apiProxy : profile.apiProxy,
+    streamImages: isFreegenProfile(profile) ? false : typeof record.streamImages === 'boolean' ? record.streamImages : profile.streamImages,
+    streamPartialImages: isFreegenProfile(profile) ? 0 : normalizeStreamPartialImages(record.streamPartialImages, profile.streamPartialImages),
   }
 }
 
 export function validateApiProfile(profile: ApiProfile): string | null {
   if (!profile.name.trim()) return '缺少名称'
+  if (isFreegenProfile(profile)) return null
   if (!profile.baseUrl.trim()) return '缺少 API URL'
   if (!profile.apiKey.trim()) return '缺少环境变量 NEXT_PUBLIC_DEFAULT_API_KEY'
   if (!profile.model.trim()) return '缺少模型 ID'
