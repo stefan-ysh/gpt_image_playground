@@ -1,7 +1,7 @@
 import type { ApiMode, AppSettings } from '../types'
 import { normalizeBaseUrl } from './devProxy'
 import {
-  createDefaultAPIMartProfile,
+  createDefaultDragonCodeProfile,
   DEFAULT_IMAGES_MODEL,
   findEquivalentApiProfile,
   mergeImportedSettings,
@@ -20,9 +20,9 @@ function getProfileDedupKey(profile: Pick<AppSettings['profiles'][number], 'prov
 }
 
 function createUrlProfileId(usedIds: Set<string>) {
-  let id = `apimart-url-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+  let id = `dragoncode-url-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
   while (usedIds.has(id)) {
-    id = `apimart-url-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+    id = `dragoncode-url-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
   }
   return id
 }
@@ -91,7 +91,7 @@ export function buildSettingsFromUrlParams(currentSettings: Partial<AppSettings>
 
   if (hasLegacyOpenAIParams) {
     const profileApiMode = apiMode ?? 'images'
-    const profile = createDefaultAPIMartProfile({
+    const profile = createDefaultDragonCodeProfile({
       id: createUrlProfileId(new Set(settings.profiles.map((item) => item.id))),
       name: 'URL 参数配置',
       apiMode: profileApiMode,

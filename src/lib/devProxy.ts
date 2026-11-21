@@ -111,7 +111,7 @@ export function shouldUseApiProxy(
   provider?: string,
   baseUrl?: string,
 ): boolean {
-  // 从根本上释放网络直连掌控权：无论是 APIMart、DragonCode 还是其他任何服务商，只要代理可用，都严格尊崇用户在界面上控制的 apiProxy 开关，或者系统级强制锁定配置
+  // 从根本上释放网络直连掌控权：无论是 DragonCode 还是其他任何服务商，只要代理可用，都严格尊崇用户在界面上控制的 apiProxy 开关，或者系统级强制锁定配置
   return isApiProxyAvailable(proxyConfig) && (apiProxy || isApiProxyLocked(proxyConfig))
 }
 

@@ -3,13 +3,13 @@ import { shouldUseApiProxy, getProxyImageUrl } from './devProxy'
 import { getActiveBaseUrl } from './env'
 import {
   DEFAULT_SETTINGS,
-  createDefaultAPIMartProfile,
+  createDefaultDragonCodeProfile,
   findEquivalentApiProfile,
   mergeImportedSettings,
   normalizeSettings,
   switchApiProfileProvider,
-  APIMART_PROVIDER_ID,
-  APIMART_PROVIDER_DEFINITION,
+  DRAGONCODE_PROVIDER_ID,
+  DRAGONCODE_PROVIDER_DEFINITION,
   FREEGEN_BASE_URL,
   FREEGEN_INTERNAL_API_KEY,
   FREEGEN_MODEL,
@@ -23,19 +23,19 @@ declare const process: {
 }
 
 describe('apiProfiles', () => {
-  it('automatically registers APIMart provider and default profile', () => {
+  it('automatically registers DragonCode provider and default profile', () => {
     const settings = normalizeSettings({})
-    expect(settings.customProviders.some((p) => p.id === APIMART_PROVIDER_ID)).toBe(true)
-    expect(settings.profiles.some((p) => p.provider === APIMART_PROVIDER_ID)).toBe(true)
+    expect(settings.customProviders.some((p) => p.id === DRAGONCODE_PROVIDER_ID)).toBe(true)
+    expect(settings.profiles.some((p) => p.provider === DRAGONCODE_PROVIDER_ID)).toBe(true)
 
-    const dragoncodeProfile = settings.profiles.find((p) => p.provider === APIMART_PROVIDER_ID)
+    const dragoncodeProfile = settings.profiles.find((p) => p.provider === DRAGONCODE_PROVIDER_ID)
     expect(dragoncodeProfile?.baseUrl).toBe(getActiveBaseUrl())
     expect(dragoncodeProfile?.model).toBe('gpt-image-2')
   })
 
-  it('sets correct baseUrl and model when switching provider to APIMart', () => {
-    const initial = createDefaultAPIMartProfile()
-    const provider = APIMART_PROVIDER_DEFINITION
+  it('sets correct baseUrl and model when switching provider to DragonCode', () => {
+    const initial = createDefaultDragonCodeProfile()
+    const provider = DRAGONCODE_PROVIDER_DEFINITION
     const profile = switchApiProfileProvider(initial, provider.id, provider)
 
     expect(profile.provider).toBe(provider.id)
@@ -43,10 +43,10 @@ describe('apiProfiles', () => {
     expect(profile.model).toBe('gpt-image-2')
   })
 
-  it('automatically updates an existing cached APIMart provider definition to the latest', () => {
+  it('automatically updates an existing cached DragonCode provider definition to the latest', () => {
     const outdatedProvider = {
-      id: APIMART_PROVIDER_ID,
-      name: 'Old APIMart',
+      id: DRAGONCODE_PROVIDER_ID,
+      name: 'Old DragonCode',
       submit: {
         path: 'old/generations',
         result: { imageUrlPaths: [] },
@@ -55,26 +55,26 @@ describe('apiProfiles', () => {
     const settings = normalizeSettings({
       customProviders: [outdatedProvider],
     })
-    const resolved = settings.customProviders.find((p) => p.id === APIMART_PROVIDER_ID)
+    const resolved = settings.customProviders.find((p) => p.id === DRAGONCODE_PROVIDER_ID)
     expect(resolved).toBeDefined()
     expect(resolved?.name).toBe('GPT-Image-2')
     expect(resolved?.submit.path).toBe('images/generations')
     expect(resolved?.poll).toBeDefined()
   })
 
-  it('automatically corrects provider to APIMart when the profile baseUrl belongs to APIMart', () => {
-    const customProviderIds = new Set<string>([APIMART_PROVIDER_ID])
+  it('automatically corrects provider to DragonCode when the profile baseUrl belongs to DragonCode', () => {
+    const customProviderIds = new Set<string>([DRAGONCODE_PROVIDER_ID])
     const normalized = normalizeApiProfile({
       id: 'test-profile',
-      name: 'My APIMart',
+      name: 'My DragonCode',
       provider: 'openai',
-      baseUrl: 'https://api.apimart.ai/v1',
-      apiKey: 'sk-apimart',
+      baseUrl: 'https://dragoncode.codes/gpt-image/v1',
+      apiKey: 'sk-dragoncode',
       model: 'gpt-image-2',
     }, undefined, customProviderIds)
 
-    expect(normalized.provider).toBe(APIMART_PROVIDER_ID)
-    expect(normalized.baseUrl).toBe('https://api.apimart.ai/v1')
+    expect(normalized.provider).toBe(DRAGONCODE_PROVIDER_ID)
+    expect(normalized.baseUrl).toBe('https://dragoncode.codes/gpt-image/v1')
     expect(normalized.model).toBe('gpt-image-2')
   })
 
@@ -94,12 +94,12 @@ describe('apiProfiles', () => {
     expect(validateApiProfile(normalized)).toBeNull()
   })
 
-  it('sets apiProxy based on proxy availability when switching provider to APIMart', () => {
+  it('sets apiProxy based on proxy availability when switching provider to DragonCode', () => {
     const originalEnv = process.env.VITE_API_PROXY_AVAILABLE
     process.env.VITE_API_PROXY_AVAILABLE = 'true'
     try {
-      const initial = createDefaultAPIMartProfile()
-      const provider = APIMART_PROVIDER_DEFINITION
+      const initial = createDefaultDragonCodeProfile()
+      const provider = DRAGONCODE_PROVIDER_DEFINITION
       const profile = switchApiProfileProvider(initial, provider.id, provider)
       expect(profile.apiProxy).toBe(true)
     } finally {
@@ -107,14 +107,14 @@ describe('apiProfiles', () => {
     }
   })
 
-  it('respects user apiProxy choice even when provider or baseUrl is APIMart', () => {
+  it('respects user apiProxy choice even when provider or baseUrl is DragonCode', () => {
     const originalEnv = process.env.VITE_API_PROXY_AVAILABLE
     process.env.VITE_API_PROXY_AVAILABLE = 'true'
     try {
-      expect(shouldUseApiProxy(false, null, APIMART_PROVIDER_ID)).toBe(false)
-      expect(shouldUseApiProxy(true, null, APIMART_PROVIDER_ID)).toBe(true)
-      expect(shouldUseApiProxy(false, null, 'some-other-provider', 'https://api.apimart.ai/v1')).toBe(false)
-      expect(shouldUseApiProxy(true, null, 'some-other-provider', 'https://api.apimart.ai/v1')).toBe(true)
+      expect(shouldUseApiProxy(false, null, DRAGONCODE_PROVIDER_ID)).toBe(false)
+      expect(shouldUseApiProxy(true, null, DRAGONCODE_PROVIDER_ID)).toBe(true)
+      expect(shouldUseApiProxy(false, null, 'some-other-provider', 'https://dragoncode.codes/gpt-image/v1')).toBe(false)
+      expect(shouldUseApiProxy(true, null, 'some-other-provider', 'https://dragoncode.codes/gpt-image/v1')).toBe(true)
       expect(shouldUseApiProxy(false, null, 'some-other-provider', 'https://api.openai.com/v1')).toBe(false)
       expect(shouldUseApiProxy(true, null, 'some-other-provider', 'https://api.openai.com/v1')).toBe(true)
     } finally {
@@ -127,7 +127,7 @@ describe('apiProfiles', () => {
     process.env.VITE_API_PROXY_AVAILABLE = 'true'
     try {
       const profile = {
-        ...createDefaultAPIMartProfile(),
+        ...createDefaultDragonCodeProfile(),
         provider: 'some-custom-provider',
         baseUrl: 'https://dragoncode.codes/v1',
         apiProxy: true,

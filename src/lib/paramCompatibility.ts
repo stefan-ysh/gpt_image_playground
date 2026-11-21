@@ -1,5 +1,5 @@
 import { DEFAULT_PARAMS, type AppSettings, type TaskParams } from '../types'
-import { getActiveApiProfile, APIMART_PROVIDER_ID, isFreegenProfile } from './apiProfiles'
+import { getActiveApiProfile, DRAGONCODE_PROVIDER_ID, isFreegenProfile } from './apiProfiles'
 import { normalizeResolution } from './resolution'
 import { normalizeImageSize, isSupported4KRatio } from './size'
 
@@ -20,7 +20,7 @@ export function normalizeParamsForSettings(
     n: 1,
   }
 
-  if (activeProfile.provider === APIMART_PROVIDER_ID) {
+  if (activeProfile.provider === DRAGONCODE_PROVIDER_ID) {
     if (nextParams.resolution === '4k' && !isSupported4KRatio(nextParams.size)) {
       nextParams.resolution = '2k'
     }

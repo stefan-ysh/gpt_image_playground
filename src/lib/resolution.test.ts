@@ -8,7 +8,7 @@ describe('resolution mapping', () => {
     expect(normalizeResolution('unknown')).toBe('1k')
   })
 
-  it('only accepts documented APIMart resolution values', () => {
+  it('only accepts documented DragonCode resolution values', () => {
     expect(normalizeResolution('1k')).toBe('1k')
     expect(normalizeResolution('2k')).toBe('2k')
     expect(normalizeResolution('4k')).toBe('4k')

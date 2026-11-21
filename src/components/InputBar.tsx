@@ -4,7 +4,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 
 import { useHintTooltip } from '../hooks/useHintTooltip'
-import { APIMART_PROVIDER_ID, FREEGEN_MODEL, createDefaultFreegenProfile, getActiveApiProfile, isFreegenProfile, normalizeSettings } from '../lib/apiProfiles'
+import { DRAGONCODE_PROVIDER_ID, FREEGEN_MODEL, createDefaultFreegenProfile, getActiveApiProfile, isFreegenProfile, normalizeSettings } from '../lib/apiProfiles'
 import { getSafeBoundingClientRect } from '../lib/domRect'
 import { downloadImageIds, formatExportFileTime } from '../lib/downloadImages'
 import { DEFAULT_FAL_IMAGE_SIZE, getChangedParams, normalizeParamsForSettings } from '../lib/paramCompatibility'
@@ -608,7 +608,7 @@ export default function InputBar() {
     ? DEFAULT_FAL_IMAGE_SIZE
     : normalizeImageSize(params.size) || DEFAULT_PARAMS.size
 
-  const isBuiltInRatioProvider = activeProvider === APIMART_PROVIDER_ID
+  const isBuiltInRatioProvider = activeProvider === DRAGONCODE_PROVIDER_ID
   const show4K = isSupported4KRatio(params.size)
   const qualityOptions = isBuiltInRatioProvider
     ? [
@@ -807,7 +807,7 @@ export default function InputBar() {
     }
 
     const targetProfile =
-      normalized.profiles.find((profile) => profile.provider === APIMART_PROVIDER_ID) ??
+      normalized.profiles.find((profile) => profile.provider === DRAGONCODE_PROVIDER_ID) ??
       normalized.profiles.find((profile) => !isFreegenProfile(profile)) ??
       normalized.profiles[0]
 
@@ -1556,7 +1556,7 @@ export default function InputBar() {
         <SizePickerModal
           currentSize={isFalTextToImage && params.size === 'auto' ? DEFAULT_FAL_IMAGE_SIZE : params.size}
           onSelect={(size) => {
-            const isBuiltInRatioProvider = activeProvider === APIMART_PROVIDER_ID
+            const isBuiltInRatioProvider = activeProvider === DRAGONCODE_PROVIDER_ID
             if (isBuiltInRatioProvider && params.resolution === '4k' && !isSupported4KRatio(size)) {
               setParams({ size, resolution: '2k' })
               showToast('当前比例不支持 4K 分辨率，已自动降级为 2K', 'info')

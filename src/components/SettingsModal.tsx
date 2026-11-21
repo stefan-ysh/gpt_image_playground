@@ -7,7 +7,7 @@ import { exportData, useStore } from '../store'
 
 import type { SettingsTab} from '../store'
 import {
-  createDefaultAPIMartProfile,
+  createDefaultDragonCodeProfile,
   DEFAULT_IMAGES_MODEL,
   DEFAULT_RESPONSES_MODEL,
   DEFAULT_SETTINGS,
@@ -152,8 +152,8 @@ function customProviderFormToInput(form: CustomProviderForm) {
   return JSON.parse(form.json)
 }
 
-function isPristineNewAPIMartProfile(profile: ApiProfile) {
-  const defaultProfile = createDefaultAPIMartProfile({ id: profile.id, name: '新配置' })
+function isPristineNewDragonCodeProfile(profile: ApiProfile) {
+  const defaultProfile = createDefaultDragonCodeProfile({ id: profile.id, name: '新配置' })
   return profile.name === '新配置' &&
     profile.provider === 'custom-dragoncode-gpt-image-2' &&
     profile.baseUrl === DEFAULT_SETTINGS.baseUrl &&
@@ -476,7 +476,7 @@ export default function SettingsModal() {
         apiProxy: apiProxyAvailable ? (apiProxyLocked || profile.apiProxy) : false,
       }
     })
-    const fallbackProfile = createDefaultAPIMartProfile({ id: newId('apimart') })
+    const fallbackProfile = createDefaultDragonCodeProfile({ id: newId('dragoncode') })
     const normalizedDraft = normalizeSettings({
       ...nextDraft,
       profiles: normalizedProfiles.length ? normalizedProfiles : [fallbackProfile],
@@ -601,7 +601,7 @@ export default function SettingsModal() {
 
   const createNewProfile = () => {
     setReusedTaskApiProfile(null)
-    const profile = createDefaultAPIMartProfile({ id: newId('apimart'), name: '新配置' })
+    const profile = createDefaultDragonCodeProfile({ id: newId('dragoncode'), name: '新配置' })
     const nextDraft = normalizeSettings({ 
         ...draft, 
         profiles: [...draft.profiles, profile],
@@ -935,7 +935,7 @@ export default function SettingsModal() {
         const mergedDraft = mergeImportedSettings(draft, imported)
         const importedProfile = getImportedProfileFromMergedSettings(mergedDraft, previousProfileIds, imported)
         const importedProfileAlreadyExisted = previousProfileIds.has(importedProfile.id)
-        const shouldReplaceActiveProfile = !editingCustomProviderId && isPristineNewAPIMartProfile(activeProfile) && !importedProfileAlreadyExisted
+        const shouldReplaceActiveProfile = !editingCustomProviderId && isPristineNewDragonCodeProfile(activeProfile) && !importedProfileAlreadyExisted
         const switchedToExistingProfile = !shouldReplaceActiveProfile && importedProfileAlreadyExisted
         const nextDraft = shouldReplaceActiveProfile
           ? normalizeSettings({

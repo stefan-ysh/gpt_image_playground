@@ -33,7 +33,7 @@ export const DEFAULT_FAL_MODEL = 'openai/gpt-image-2'
 export const DEFAULT_OPENAI_PROFILE_ID = 'default-openai'
 export const DEFAULT_API_TIMEOUT = 600
 
-export const APIMART_PROVIDER_ID = 'custom-dragoncode-gpt-image-2'
+export const DRAGONCODE_PROVIDER_ID = 'custom-dragoncode-gpt-image-2'
 export const FREEGEN_PROVIDER_ID = 'freegen-z-image'
 export const FREEGEN_MODEL = 'z-image'
 export const FREEGEN_BASE_URL = 'https://freegen.app'
@@ -43,8 +43,8 @@ export function getDefaultApiKey(): string {
   return readRuntimeEnv(process.env.NEXT_PUBLIC_DEFAULT_API_KEY || '')
 }
 
-export const APIMART_PROVIDER_DEFINITION: CustomProviderDefinition = {
-  id: APIMART_PROVIDER_ID,
+export const DRAGONCODE_PROVIDER_DEFINITION: CustomProviderDefinition = {
+  id: DRAGONCODE_PROVIDER_ID,
   name: 'GPT-Image-2',
   template: 'http-image',
   submit: {
@@ -58,7 +58,6 @@ export const APIMART_PROVIDER_DEFINITION: CustomProviderDefinition = {
       resolution: '$params.resolution',
       image_urls: '$inputImages.dataUrls',
       n: '$params.n',
-      official_fallback: '$params.official_fallback',
     },
     taskIdPath: 'data.0.task_id',
     result: { imageUrlPaths: [], b64JsonPaths: [] },
@@ -81,7 +80,7 @@ export const APIMART_PROVIDER_DEFINITION: CustomProviderDefinition = {
   },
 }
 
-const BUILT_IN_PROVIDER_IDS = new Set<ApiProvider>([APIMART_PROVIDER_ID])
+const BUILT_IN_PROVIDER_IDS = new Set<ApiProvider>([DRAGONCODE_PROVIDER_ID])
 const DEFAULT_CUSTOM_PROVIDER_PATHS = {
   generationPath: 'images/generations',
   editPath: 'images/edits',
@@ -324,12 +323,12 @@ export function normalizeCustomProviderDefinitions(input: unknown): CustomProvid
     .filter((item): item is CustomProviderDefinition => Boolean(item))
 }
 
-export function createDefaultAPIMartProfile(overrides: Partial<ApiProfile> = {}): ApiProfile {
+export function createDefaultDragonCodeProfile(overrides: Partial<ApiProfile> = {}): ApiProfile {
   const defaultBaseUrl = getActiveBaseUrl()
   return {
-    id: `apimart-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    id: `dragoncode-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
     name: 'GPT-Image-2',
-    provider: APIMART_PROVIDER_ID,
+    provider: DRAGONCODE_PROVIDER_ID,
     baseUrl: defaultBaseUrl,
     model: 'gpt-image-2',
     timeout: DEFAULT_API_TIMEOUT,
@@ -365,14 +364,14 @@ export function isFreegenProfile(profile: Pick<ApiProfile, 'provider' | 'model'>
 
 export function switchApiProfileProvider(profile: ApiProfile, provider: ApiProvider, customProvider?: CustomProviderDefinition): ApiProfile {
   if (customProvider) {
-    const isAPIMart = customProvider.id === APIMART_PROVIDER_ID
+    const isDragonCode = customProvider.id === DRAGONCODE_PROVIDER_ID
     const defaultBaseUrl = getActiveBaseUrl()
     const defaultModel = 'gpt-image-2'
     return {
       ...profile,
       provider: customProvider.id,
-      baseUrl: isAPIMart ? defaultBaseUrl : profile.baseUrl || defaultBaseUrl,
-      model: isAPIMart ? defaultModel : profile.model || defaultModel,
+      baseUrl: isDragonCode ? defaultBaseUrl : profile.baseUrl || defaultBaseUrl,
+      model: isDragonCode ? defaultModel : profile.model || defaultModel,
       apiMode: 'images',
       apiProxy: isApiProxyAvailable(),
     }
@@ -380,7 +379,7 @@ export function switchApiProfileProvider(profile: ApiProfile, provider: ApiProvi
 
   return {
     ...profile,
-    provider: APIMART_PROVIDER_ID,
+    provider: DRAGONCODE_PROVIDER_ID,
     baseUrl: getActiveBaseUrl(),
     model: 'gpt-image-2',
     apiMode: 'images',
@@ -412,10 +411,10 @@ export function normalizeApiProfile(input: unknown, fallback?: Partial<ApiProfil
       providerDrafts: isRecord(record.providerDrafts) ? record.providerDrafts as ApiProfile['providerDrafts'] : defaults.providerDrafts,
     }
   }
-  const isAPIMart = inputBaseUrl.toLowerCase().includes('dragoncode.codes/gpt-image') || inputBaseUrl.toLowerCase().includes('api.apimart.ai') || rawProvider === APIMART_PROVIDER_ID
+  const isDragonCode = inputBaseUrl.toLowerCase().includes('dragoncode.codes/gpt-image') || rawProvider === DRAGONCODE_PROVIDER_ID
 
-  const provider: ApiProvider = isAPIMart ? APIMART_PROVIDER_ID : (rawProvider || APIMART_PROVIDER_ID)
-  const defaults = createDefaultAPIMartProfile(fallback)
+  const provider: ApiProvider = isDragonCode ? DRAGONCODE_PROVIDER_ID : (rawProvider || DRAGONCODE_PROVIDER_ID)
+  const defaults = createDefaultDragonCodeProfile(fallback)
   const resolvedBaseUrl = typeof record.baseUrl === 'string' ? record.baseUrl : defaults.baseUrl
 
   return {
@@ -452,16 +451,16 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
   const record = input && typeof input === 'object' ? input as Record<string, unknown> : {}
   const customProviders = normalizeCustomProviderDefinitions(record.customProviders)
 
-  // 自动注册或更新内置的 APIMart 服务商为最新定义
-  const dragonCodeIndex = customProviders.findIndex((p) => p.id === APIMART_PROVIDER_ID)
+  // 自动注册或更新内置的 DragonCode 服务商为最新定义
+  const dragonCodeIndex = customProviders.findIndex((p) => p.id === DRAGONCODE_PROVIDER_ID)
   if (dragonCodeIndex >= 0) {
-    customProviders[dragonCodeIndex] = APIMART_PROVIDER_DEFINITION
+    customProviders[dragonCodeIndex] = DRAGONCODE_PROVIDER_DEFINITION
   } else {
-    customProviders.push(APIMART_PROVIDER_DEFINITION)
+    customProviders.push(DRAGONCODE_PROVIDER_DEFINITION)
   }
 
   const customProviderIds = new Set(customProviders.map((provider) => provider.id))
-  const legacyProfile = createDefaultAPIMartProfile({
+  const legacyProfile = createDefaultDragonCodeProfile({
     baseUrl: typeof record.baseUrl === 'string' ? record.baseUrl : getActiveBaseUrl(),
     apiKey: getDefaultApiKey(),
     model: typeof record.model === 'string' && record.model.trim() ? record.model : 'gpt-image-2',
@@ -472,13 +471,14 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     ? record.profiles.map((profile) => normalizeApiProfile(profile, undefined, customProviderIds))
     : [legacyProfile]
 
-  // 强力同步内置的 APIMart Profile 的 baseUrl 为当前最新环境变量地址，彻底解决浏览器 LocalStorage 缓存滞后导致模式切换不生效问题
+  // 强力同步内置的 DragonCode Profile 的 baseUrl 为当前最新环境变量地址，彻底解决浏览器 LocalStorage 缓存滞后导致模式切换不生效问题
   const currentActiveBaseUrl = getActiveBaseUrl()
   const syncedProfiles = profiles.map((p) => {
-    if (p.provider === APIMART_PROVIDER_ID) {
-      // 只有内置默认的 APIMart 或者是属于内置域名的 baseUrl，才进行强制热纠正
-      const isDefaultId = (p.id.startsWith('apimart-') && !p.id.includes('-url-')) || p.id.startsWith('dragoncode-') || p.id === 'default-apimart'
-      const isDefaultUrl = (p.baseUrl || '').toLowerCase().includes('dragoncode.codes') || (p.baseUrl || '').toLowerCase().includes('api.apimart.ai')
+    if (p.provider === DRAGONCODE_PROVIDER_ID) {
+      // 只有内置默认的 Profile 或者是属于内置域名的 baseUrl，才进行强制热纠正
+      // apimart- 前缀与 default-apimart 为旧版本地存储遗留 ID，保留识别以完成存量配置迁移；-url- 结尾的 URL 参数配置不参与强制纠正
+      const isDefaultId = ((p.id.startsWith('apimart-') || p.id.startsWith('dragoncode-')) && !p.id.includes('-url-')) || p.id === 'default-apimart'
+      const isDefaultUrl = (p.baseUrl || '').toLowerCase().includes('dragoncode.codes')
       if (isDefaultId || isDefaultUrl) {
         return { ...p, baseUrl: currentActiveBaseUrl }
       }
@@ -486,9 +486,9 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     return p
   })
 
-  // 自动将内置的 APIMart Profile 追加 to profiles 列表中（如果不存在）
-  if (!syncedProfiles.some((p) => p.provider === APIMART_PROVIDER_ID)) {
-    syncedProfiles.push(createDefaultAPIMartProfile())
+  // 自动将内置的 DragonCode Profile 追加 to profiles 列表中（如果不存在）
+  if (!syncedProfiles.some((p) => p.provider === DRAGONCODE_PROVIDER_ID)) {
+    syncedProfiles.push(createDefaultDragonCodeProfile())
   }
 
   const freegenIndex = syncedProfiles.findIndex((p) => isFreegenProfile(p))
@@ -606,7 +606,7 @@ export function importCustomProviderDefinitionFromJson(jsonText: string, existin
 export function getActiveApiProfile(settings: Partial<AppSettings> | unknown): ApiProfile {
   const record = settings && typeof settings === 'object' ? settings as Record<string, unknown> : {}
   const normalized = normalizeSettings(settings)
-  const profile = normalized.profiles.find((p) => p.id === normalized.activeProfileId) ?? normalized.profiles[0] ?? createDefaultAPIMartProfile()
+  const profile = normalized.profiles.find((p) => p.id === normalized.activeProfileId) ?? normalized.profiles[0] ?? createDefaultDragonCodeProfile()
 
   return {
     ...profile,
@@ -630,12 +630,12 @@ export function validateApiProfile(profile: ApiProfile): string | null {
   return null
 }
 
-function isDefaultAPIMartProfile(profile: ApiProfile): boolean {
+function isDefaultDragonCodeProfile(profile: ApiProfile): boolean {
   const isCorrectBaseUrl = profile.baseUrl === getActiveBaseUrl()
   const isCorrectName = profile.name === 'GPT-Image-2'
   return (profile.id.startsWith('apimart-') || profile.id.startsWith('dragoncode-')) &&
     isCorrectName &&
-    profile.provider === APIMART_PROVIDER_ID &&
+    profile.provider === DRAGONCODE_PROVIDER_ID &&
     isCorrectBaseUrl &&
     profile.apiKey === getDefaultApiKey() &&
     profile.model === 'gpt-image-2' &&
@@ -646,10 +646,10 @@ function isDefaultAPIMartProfile(profile: ApiProfile): boolean {
 
 function hasOnlyDefaultProfiles(settings: AppSettings): boolean {
   const hasOnlyDragonCodeProvider = settings.customProviders.length === 1 &&
-    settings.customProviders[0].id === APIMART_PROVIDER_ID
+    settings.customProviders[0].id === DRAGONCODE_PROVIDER_ID
 
   if (settings.profiles.length === 1) {
-    return hasOnlyDragonCodeProvider && isDefaultAPIMartProfile(settings.profiles[0])
+    return hasOnlyDragonCodeProvider && isDefaultDragonCodeProfile(settings.profiles[0])
   }
   return false
 }

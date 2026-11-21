@@ -2,7 +2,7 @@ import { DEFAULT_STREAM_PARTIAL_IMAGES } from '../types'
 
 import type { ApiProfile, CustomProviderDefinition, CustomProviderPollMapping, CustomProviderResultMapping, CustomProviderSubmitMapping, ImageApiResponse, ImageResponseItem, ResponsesApiResponse, ResponsesOutputItem, TaskParams } from '../types'
 import { dataUrlToBlob } from './canvasImage'
-import { APIMART_PROVIDER_ID, getCustomProviderDefinition } from './apiProfiles'
+import { DRAGONCODE_PROVIDER_ID, getCustomProviderDefinition } from './apiProfiles'
 import { formatImageRatio } from './size'
 import { buildApiUrl, readClientDevProxyConfig, shouldUseApiProxy, getProxyImageUrl } from './devProxy'
 import { getActiveBaseUrl } from './env'
@@ -438,8 +438,8 @@ async function parseResponsesApiStreamResponse(
 
 export async function callOpenAICompatibleImageApi(opts: CallApiOptions, profile: ApiProfile, customProvider?: CustomProviderDefinition | null): Promise<CallApiResult> {
   let activeCustomProvider = customProvider
-  if (!activeCustomProvider && profile.baseUrl && (profile.baseUrl.toLowerCase().includes('dragoncode.codes/gpt-image') || profile.baseUrl.toLowerCase().includes('api.apimart.ai'))) {
-    activeCustomProvider = getCustomProviderDefinition(opts.settings, APIMART_PROVIDER_ID)
+  if (!activeCustomProvider && profile.baseUrl && profile.baseUrl.toLowerCase().includes('dragoncode.codes/gpt-image')) {
+    activeCustomProvider = getCustomProviderDefinition(opts.settings, DRAGONCODE_PROVIDER_ID)
   }
 
   if (activeCustomProvider) {
@@ -635,7 +635,6 @@ function createCustomProviderContext(opts: CallApiOptions, profile: ApiProfile) 
       ...opts.params,
       resolution: normalizeResolution(opts.params.resolution),
       sizeRatio,
-      official_fallback: false,
     },
     inputImages: {
       dataUrls: safeDataUrls.length ? safeDataUrls : undefined,

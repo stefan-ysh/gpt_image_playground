@@ -73,10 +73,6 @@ function createActualParams(input: Awaited<ReturnType<typeof toProviderTaskInput
     n: 1,
     size: input.params.size || '1:1',
     resolution: input.params.resolution || '2k',
-    official_fallback:
-      typeof input.params.official_fallback === 'boolean'
-        ? input.params.official_fallback
-        : false,
     image_urls_count: input.inputImageUrls.length,
     has_reference_images: input.inputImageUrls.length > 0,
     provider: input.apiProvider,

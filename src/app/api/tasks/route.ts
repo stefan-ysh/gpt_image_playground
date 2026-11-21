@@ -6,7 +6,7 @@ import { RowDataPacket } from 'mysql2';
 import { NextResponse } from 'next/server';
 
 import type { PoolConnection } from 'mysql2/promise';
-import { APIMART_PROVIDER_DEFINITION, APIMART_PROVIDER_ID } from '@/lib/apiProfiles';
+import { DRAGONCODE_PROVIDER_DEFINITION, DRAGONCODE_PROVIDER_ID } from '@/lib/apiProfiles';
 import { syncTaskImageRefs } from '@/lib/db/task-images';
 import { assertDailyImageLimit, isDailyImageLimitError } from '@/lib/db/daily-limit';
 
@@ -23,7 +23,7 @@ function parseJson(str: string | null): any {
 
 function rowToTaskRecord(row: any) {
   const apiProfileSnapshot = parseJson(row.api_profile_snapshot);
-  const apiProvider = row.api_provider || apiProfileSnapshot?.provider || (row.custom_task_id && row.api_model === 'gpt-image-2' ? APIMART_PROVIDER_ID : undefined);
+  const apiProvider = row.api_provider || apiProfileSnapshot?.provider || (row.custom_task_id && row.api_model === 'gpt-image-2' ? DRAGONCODE_PROVIDER_ID : undefined);
   return {
     id: row.id,
     prompt: row.prompt,
@@ -34,7 +34,7 @@ function rowToTaskRecord(row: any) {
     apiMode: row.api_mode || apiProfileSnapshot?.apiMode,
     apiModel: row.api_model,
     apiProfileSnapshot,
-    customProviderSnapshot: parseJson(row.custom_provider_snapshot) || (apiProvider === APIMART_PROVIDER_ID ? APIMART_PROVIDER_DEFINITION : undefined),
+    customProviderSnapshot: parseJson(row.custom_provider_snapshot) || (apiProvider === DRAGONCODE_PROVIDER_ID ? DRAGONCODE_PROVIDER_DEFINITION : undefined),
     falRequestId: row.fal_request_id,
     falEndpoint: row.fal_endpoint,
     falRecoverable: row.fal_recoverable === 1,

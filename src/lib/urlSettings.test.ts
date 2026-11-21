@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_SETTINGS,
   normalizeSettings,
-  createDefaultAPIMartProfile,
+  createDefaultDragonCodeProfile,
 } from './apiProfiles'
 import { buildSettingsFromUrlParams, clearUrlSettingParams, hasUrlSettingParams } from './urlSettings'
 
@@ -14,7 +14,7 @@ describe('URL settings params', () => {
       ...buildSettingsFromUrlParams(current, new URLSearchParams('apiUrl=https://api.example.com/v1&apiKey=test-key')),
     })
 
-    // 默认自带 1 个 APIMart profile，加上 URL 解析的共 2 个
+    // 默认自带 1 个 DragonCode profile，加上 URL 解析的共 2 个
     expect(next.profiles).toHaveLength(2)
     expect(next.activeProfileId).not.toBe(current.activeProfileId)
     const active = next.profiles.find((profile) => profile.id === next.activeProfileId)

@@ -127,10 +127,6 @@ function createSubmitPayload(task: ProviderTaskInput) {
     resolution: params.resolution || '2k',
   }
 
-  if (typeof params.official_fallback === 'boolean') {
-    payload.official_fallback = params.official_fallback
-  }
-
   const inputImages = task.inputImageUrls?.filter(Boolean) || []
 
   if (inputImages.length > 0) {

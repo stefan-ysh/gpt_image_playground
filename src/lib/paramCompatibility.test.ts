@@ -6,13 +6,13 @@ import { getActiveBaseUrl } from './env'
 import { normalizeParamsForSettings } from './paramCompatibility'
 
 describe('parameter compatibility', () => {
-  it('downgrades APIMart 4k resolution to 2k if ratio is unsupported', () => {
-    const apiMartProfile: ApiProfile = {
-      id: 'apimart-profile',
-      name: 'APIMart Test',
+  it('downgrades DragonCode 4k resolution to 2k if ratio is unsupported', () => {
+    const dragoncodeProfile: ApiProfile = {
+      id: 'dragoncode-profile',
+      name: 'DragonCode Test',
       provider: 'custom-dragoncode-gpt-image-2',
       baseUrl: getActiveBaseUrl(),
-      apiKey: 'sk-apimart',
+      apiKey: 'sk-dragoncode',
       model: 'gpt-image-2',
       timeout: 600,
       apiMode: 'images',
@@ -22,8 +22,8 @@ describe('parameter compatibility', () => {
     }
     const settings = {
       ...DEFAULT_SETTINGS,
-      profiles: [apiMartProfile],
-      activeProfileId: apiMartProfile.id,
+      profiles: [dragoncodeProfile],
+      activeProfileId: dragoncodeProfile.id,
     }
 
     // 16:9 支持 4k
