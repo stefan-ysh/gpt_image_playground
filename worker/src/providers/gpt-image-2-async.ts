@@ -201,6 +201,17 @@ async function fetchWithTimeout(
   }
 }
 
+/** 服务商明确拒绝（HTTP 4xx）：请求未被执行、不会创建任务，可安全地直接判失败 */
+export class ProviderSubmitRejectedError extends Error {
+  readonly statusCode: number
+
+  constructor(message: string, statusCode: number) {
+    super(message)
+    this.name = 'ProviderSubmitRejectedError'
+    this.statusCode = statusCode
+  }
+}
+
 export class GptImage2AsyncProvider implements ProviderAdapter {
   async submit(task: ProviderTaskInput): Promise<ProviderSubmitResult> {
     if (!task.apiBaseUrl) {
@@ -225,12 +236,11 @@ export class GptImage2AsyncProvider implements ProviderAdapter {
     const payload = await readJsonResponse(response)
 
     if (!response.ok) {
-      throw new Error(
-        getErrorMessage(
-          payload,
-          `提交任务失败：HTTP ${response.status}`,
-        ),
-      )
+      const message = getErrorMessage(payload, `提交任务失败：HTTP ${response.status}`)
+      if (response.status >= 400 && response.status < 500) {
+        throw new ProviderSubmitRejectedError(message, response.status)
+      }
+      throw new Error(message)
     }
 
     const taskId = extractTaskId(payload)

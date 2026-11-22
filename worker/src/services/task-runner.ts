@@ -2,7 +2,7 @@ import type { DbTask } from '../db/tasks.js'
 import { config } from '../config.js'
 import { updateTaskStatus } from '../db/tasks.js'
 import { getProvider } from '../providers/index.js'
-import { resolveDragonSize } from '../providers/gpt-image-2-async.js'
+import { resolveDragonSize, ProviderSubmitRejectedError } from '../providers/gpt-image-2-async.js'
 import { getNextBackoffMs } from '../utils/backoff.js'
 import { notifyTaskUpdated } from './notifier.js'
 import { processSucceededRawTask } from './image-transfer.js'
@@ -212,6 +212,20 @@ async function submitProviderTask(task: DbTask) {
 
     await notifyTaskUpdated(task.id, 'polling')
   } catch (error) {
+    // 服务商明确拒绝（HTTP 4xx）：请求未被执行、不会创建任务、不会扣费，直接判失败；
+    // 仅真正的未知态（超时/断连/5xx）才进入 submit_unknown 防重复扣费保护
+    if (error instanceof ProviderSubmitRejectedError) {
+      await updateTaskStatus(task.id, 'provider_failed', {
+        provider_status: 'rejected',
+        last_provider_error: error.message,
+        finished_at: Date.now(),
+        elapsed: Date.now() - Number(task.created_at),
+        actual_params: JSON.stringify(actualParams),
+      })
+      await notifyTaskUpdated(task.id, 'provider_failed')
+      return
+    }
+
     await updateTaskStatus(task.id, 'submit_unknown', {
       provider_status: 'submit_unknown',
       last_provider_error:
