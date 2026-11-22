@@ -53,16 +53,16 @@ export default function SigninPage() {
         >
           <div>
             <label htmlFor="email" className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1.5">
-              邮箱
+              账号
             </label>
             <input
               id="email"
-              type="email"
-              autoComplete="email"
+              type="text"
+              autoComplete="username"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@company.com"
+              placeholder="请输入账号"
               className="w-full h-10 px-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-300 dark:placeholder:text-gray-600 outline-none focus:border-blue-400 dark:focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition"
             />
           </div>
