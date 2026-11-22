@@ -20,6 +20,12 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // 入口 HTML 禁止缓存：Next 静态页默认 s-maxage=1 年，会被中间代理
+        // （宝塔全局 proxy_cache）长期缓存旧版本，导致用户拿到过期页面
+        source: '/',
+        headers: [{ key: 'Cache-Control', value: 'no-cache, must-revalidate' }],
+      },
+      {
         source: '/api/:path*',
         headers: [
           { key: 'Access-Control-Allow-Credentials', value: 'true' },
