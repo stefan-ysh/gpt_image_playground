@@ -4,7 +4,7 @@ import { mysqlPool } from '@/lib/db/mysql';
 import { ensurePlaygroundSchema } from '@/lib/db/schema';
 import { handleApiError } from '@/lib/api-error';
 import { requireAdminUser } from '@/lib/db/auth';
-import { getTodayCountedImageUsage } from '@/lib/db/daily-limit';
+import { getTodayCountedImageUsage, getZonedDayStartMs } from '@/lib/db/daily-limit';
 import { getUnitPrice, getUnitPrices } from '@/lib/pricing';
 
 export const runtime = 'nodejs';
@@ -16,7 +16,7 @@ export async function GET() {
     await ensurePlaygroundSchema();
 
     const pool = await mysqlPool();
-    const todayStart = getShanghaiDayStartMs();
+    const todayStart = getZonedDayStartMs('Asia/Shanghai');
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT u.id, u.email, u.display_name, u.status, u.is_admin, u.login_count,
               u.last_login_ip, u.last_login_ua, u.created_at, u.last_login_at,
@@ -31,7 +31,9 @@ export async function GET() {
     );
     // 按用户统计完成任务花费（actual_params 在 Node 侧解析，规避旧版 MySQL 无 JSON 函数）
     const [resRows] = await pool.query<RowDataPacket[]>(
-      `SELECT user_id, actual_params, finished_at FROM playground_tasks WHERE status = 'done'`
+      `SELECT user_id, actual_params, finished_at FROM playground_tasks
+       WHERE status = 'done' AND api_provider = 'custom-dragoncode-gpt-image-2'
+         AND api_profile_snapshot LIKE '%dragoncode.codes%'`
     );
     const costByUser: Record<string, number> = {};
     const costTodayByUser: Record<string, number> = {};
@@ -82,11 +84,3 @@ export async function GET() {
   }
 }
 
-function getShanghaiDayStartMs(): number {
-  const now = new Date();
-  const shanghai = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
-  shanghai.setHours(0, 0, 0, 0);
-  // 转回 UTC 时间戳：本地(上海视图)时间 - 偏移
-  const offsetMs = shanghai.getTime() - new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' })).getTime();
-  return shanghai.getTime() - offsetMs;
-}

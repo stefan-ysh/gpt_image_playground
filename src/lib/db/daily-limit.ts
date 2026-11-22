@@ -54,7 +54,7 @@ function getTimeZoneOffsetMs(timezone: string, date: Date): number {
   return asUtc - date.getTime();
 }
 
-function getZonedDayStartMs(timezone: string, date = new Date()): number {
+export function getZonedDayStartMs(timezone: string, date = new Date()): number {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
     year: 'numeric',

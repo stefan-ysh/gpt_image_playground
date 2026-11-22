@@ -4,6 +4,7 @@ import { mysqlPool } from '@/lib/db/mysql';
 import { ensurePlaygroundSchema } from '@/lib/db/schema';
 import { handleApiError } from '@/lib/api-error';
 import { requireAdminUser } from '@/lib/db/auth';
+import { getZonedDayStartMs } from '@/lib/db/daily-limit';
 import { getUnitPrice, getUnitPrices } from '@/lib/pricing';
 
 export const runtime = 'nodejs';
@@ -15,7 +16,7 @@ export async function GET() {
     await ensurePlaygroundSchema();
 
     const pool = await mysqlPool();
-    const todayStart = getShanghaiDayStartMs();
+    const todayStart = getZonedDayStartMs('Asia/Shanghai');
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT
          (SELECT COUNT(*) FROM playground_users) AS users_total,
@@ -34,7 +35,9 @@ export async function GET() {
     // 花费估算：按文档规则（完成任务按 resolution 档位计费、每任务 1 张）本地推算
     // 注：部分宝塔 MySQL 版本无 JSON 函数，取 actual_params 在 Node 侧解析
     const [resRows] = await pool.query<RowDataPacket[]>(
-      `SELECT actual_params, finished_at FROM playground_tasks WHERE status = 'done'`
+      `SELECT actual_params, finished_at FROM playground_tasks
+       WHERE status = 'done' AND api_provider = 'custom-dragoncode-gpt-image-2'
+         AND api_profile_snapshot LIKE '%dragoncode.codes%'`
     );
     let costTotal = 0;
     let costToday = 0;
@@ -73,10 +76,4 @@ export async function GET() {
   }
 }
 
-function getShanghaiDayStartMs(): number {
-  const now = new Date();
-  const shanghai = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
-  shanghai.setHours(0, 0, 0, 0);
-  const offsetMs = shanghai.getTime() - new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' })).getTime();
-  return shanghai.getTime() - offsetMs;
-}
+
