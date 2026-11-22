@@ -61,6 +61,7 @@ const thumbnailBackfillIds = new Map<string, 'visible' | 'background'>()
 const thumbnailBackfillRunningIds = new Set<string>()
 const thumbnailSubscribers = new Map<string, Set<(thumbnail: { dataUrl: string; width?: number; height?: number }) => void>>()
 let thumbnailBackfillScheduled = false
+const PARAMS_DEFAULTS_VERSION = 2
 const MAX_IMAGE_CACHE_ENTRIES = 8
 const MAX_THUMBNAIL_CACHE_ENTRIES = 80
 const MAX_THUMBNAIL_BACKFILL_CONCURRENT = 4
@@ -697,6 +698,7 @@ export function getPersistedState(state: AppState) {
   return {
     settings,
     params: state.params,
+    paramsDefaultsVersion: state.paramsDefaultsVersion,
     ...(settings.persistInputOnRestart && galleryInputDraft
       ? {
         prompt: galleryInputDraft?.prompt ?? '',
@@ -725,7 +727,15 @@ function mergePersistedState(persistedState: unknown, currentState: AppState): A
     ? (() => {
       const { quality: _ignoredQuality, ...paramsWithoutQuality } = persisted.params as typeof persisted.params & { quality?: unknown }
       void _ignoredQuality
-      return paramsWithoutQuality
+      // 一次性迁移：旧版本默认档是 2k，老用户持久化里残留的 2k 并非主动选择，
+      // 缺少版本标记时强制重置为当前默认（1k），之后用户手动修改会正常持久化
+      const paramsDefaultsVersion = Number(
+        (persisted as { paramsDefaultsVersion?: unknown }).paramsDefaultsVersion ?? 0,
+      )
+      if (paramsDefaultsVersion < PARAMS_DEFAULTS_VERSION && paramsWithoutQuality.resolution === '2k') {
+        paramsWithoutQuality.resolution = DEFAULT_PARAMS.resolution
+      }
+      return Object.assign(paramsWithoutQuality, { paramsDefaultsVersion: Math.max(paramsDefaultsVersion, PARAMS_DEFAULTS_VERSION) })
     })()
     : {}
   const galleryInputDraft = settings.persistInputOnRestart
@@ -760,6 +770,8 @@ function mergePersistedState(persistedState: unknown, currentState: AppState): A
 // ===== Store 类型 =====
 
 interface AppState {
+  /** 参数默认值迁移版本：用于一次性把旧持久化的 2k 默认档重置为新默认 1k */
+  paramsDefaultsVersion: number
   // 设置
   settings: AppSettings
   setSettings: (s: Partial<AppSettings>) => void
@@ -1358,6 +1370,7 @@ export const useStore = create<AppState>()(
       },
       // Params
       params: { ...DEFAULT_PARAMS },
+      paramsDefaultsVersion: PARAMS_DEFAULTS_VERSION,
       setParams: (p) => set((s) => {
         const params = { ...s.params, ...p }
         return { params: { ...params, resolution: normalizeResolution(params.resolution, DEFAULT_PARAMS.resolution) } }

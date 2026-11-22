@@ -171,7 +171,7 @@ function createSubmitPayload(task: ProviderTaskInput) {
     prompt: task.prompt,
     n: 1,
     size: resolveDragonSize(params),
-    resolution: params.resolution || '2k',
+    resolution: params.resolution || '1k',
   }
 
   const inputImages = task.inputImageUrls?.filter(Boolean) || []

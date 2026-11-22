@@ -73,7 +73,7 @@ function createActualParams(input: Awaited<ReturnType<typeof toProviderTaskInput
     prompt: input.prompt,
     n: 1,
     size: resolveDragonSize(input.params),
-    resolution: input.params.resolution || '2k',
+    resolution: input.params.resolution || '1k',
     image_urls_count: input.inputImageUrls.length,
     has_reference_images: input.inputImageUrls.length > 0,
     provider: input.apiProvider,
