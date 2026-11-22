@@ -48,7 +48,8 @@ export const DRAGONCODE_PROVIDER_DEFINITION: CustomProviderDefinition = {
     body: {
       model: '$profile.model',
       prompt: '$prompt',
-      size: '$params.size',
+      // DragonCode 文档：size 为比例字符串（1:1/16:9/auto），由 sizeRatio 提供
+      size: '$params.sizeRatio',
       resolution: '$params.resolution',
       image_urls: '$inputImages.dataUrls',
       n: '$params.n',

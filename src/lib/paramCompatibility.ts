@@ -1,7 +1,7 @@
 import { DEFAULT_PARAMS, type AppSettings, type TaskParams } from '../types'
 import { getActiveApiProfile, DRAGONCODE_PROVIDER_ID } from './apiProfiles'
 import { normalizeResolution } from './resolution'
-import { normalizeImageSize, isSupported4KRatio } from './size'
+import { normalizeImageSize, isSupported4KRatio, toDragonSizeRatio } from './size'
 
 export const MAX_OPENAI_OUTPUT_IMAGES = 10
 
@@ -22,6 +22,8 @@ export function normalizeParamsForSettings(
     if (nextParams.resolution === '4k' && !isSupported4KRatio(nextParams.size)) {
       nextParams.resolution = '2k'
     }
+    // DragonCode 要求 size 为比例字符串（1:1/16:9/auto），由像素尺寸换算并吸附到支持列表
+    nextParams.sizeRatio = toDragonSizeRatio(nextParams.size) ?? undefined
   }
 
   if (nextParams.output_format === 'png') {

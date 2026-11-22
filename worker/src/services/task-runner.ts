@@ -2,6 +2,7 @@ import type { DbTask } from '../db/tasks.js'
 import { config } from '../config.js'
 import { updateTaskStatus } from '../db/tasks.js'
 import { getProvider } from '../providers/index.js'
+import { resolveDragonSize } from '../providers/gpt-image-2-async.js'
 import { getNextBackoffMs } from '../utils/backoff.js'
 import { notifyTaskUpdated } from './notifier.js'
 import { processSucceededRawTask } from './image-transfer.js'
@@ -71,7 +72,7 @@ function createActualParams(input: Awaited<ReturnType<typeof toProviderTaskInput
     model: input.apiModel || input.params.model || 'gpt-image-2',
     prompt: input.prompt,
     n: 1,
-    size: input.params.size || '1:1',
+    size: resolveDragonSize(input.params),
     resolution: input.params.resolution || '2k',
     image_urls_count: input.inputImageUrls.length,
     has_reference_images: input.inputImageUrls.length > 0,

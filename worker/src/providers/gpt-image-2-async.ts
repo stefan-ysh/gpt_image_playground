@@ -12,6 +12,53 @@ function buildUrl(baseUrl: string, path: string) {
   return `${base}/${cleanPath}`
 }
 
+// DragonCode 文档支持的 size 取值：auto + 13 种固定比例
+const DRAGON_SUPPORTED_RATIOS: Array<[string, number, number]> = [
+  ['1:1', 1, 1],
+  ['3:2', 3, 2],
+  ['2:3', 2, 3],
+  ['4:3', 4, 3],
+  ['3:4', 3, 4],
+  ['5:4', 5, 4],
+  ['4:5', 4, 5],
+  ['16:9', 16, 9],
+  ['9:16', 9, 16],
+  ['2:1', 2, 1],
+  ['1:2', 1, 2],
+  ['21:9', 21, 9],
+  ['9:21', 9, 21],
+]
+
+/** 把像素尺寸（1024x1536）/比例字符串/auto 转成文档要求的 size 取值，不在支持列表时吸附到最近比例 */
+function toDragonRatioSize(size: string | null | undefined): string {
+  const trimmed = (size ?? '').trim()
+  if (!trimmed) return '1:1'
+  if (trimmed.toLowerCase() === 'auto') return 'auto'
+  const match = trimmed.match(/^\s*(\d+(?:\.\d+)?)\s*[:xX×]\s*(\d+(?:\.\d+)?)\s*$/)
+  if (!match) return '1:1'
+  const target = Number(match[1]) / Number(match[2])
+  if (!Number.isFinite(target) || target <= 0) return '1:1'
+  let bestLabel = '1:1'
+  let bestDelta = Number.POSITIVE_INFINITY
+  for (const [label, w, h] of DRAGON_SUPPORTED_RATIOS) {
+    const delta = Math.abs(w / h - target) / target
+    if (delta < 1e-9) return label
+    if (delta < bestDelta) {
+      bestDelta = delta
+      bestLabel = label
+    }
+  }
+  return bestLabel
+}
+
+/** 提交 DragonCode 用的 size：优先使用任务里已换算的 sizeRatio，缺失时（存量任务）自行转换 */
+export function resolveDragonSize(params: Record<string, unknown>): string {
+  const sizeRatio = params.sizeRatio
+  if (typeof sizeRatio === 'string' && sizeRatio.trim()) return sizeRatio.trim()
+  const size = typeof params.size === 'string' ? params.size : ''
+  return toDragonRatioSize(size)
+}
+
 async function readJsonResponse(response: Response) {
   const text = await response.text()
 
@@ -123,7 +170,7 @@ function createSubmitPayload(task: ProviderTaskInput) {
     model: task.apiModel || params.model || 'gpt-image-2',
     prompt: task.prompt,
     n: 1,
-    size: params.size || '1:1',
+    size: resolveDragonSize(params),
     resolution: params.resolution || '2k',
   }
 

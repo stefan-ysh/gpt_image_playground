@@ -6,10 +6,6 @@
 export const env = {
   // Public environment variables (exposed to client)
   public: {
-    // Dashboard/Auth server URL
-    dashboardUrl:
-      process.env.NEXT_PUBLIC_DASHBOARD_URL,
-
     // Default API base URL for image generation
     defaultBaseUrl:
       process.env.NEXT_PUBLIC_DEFAULT_BASE_URL || 'https://api.openai.com/v1',

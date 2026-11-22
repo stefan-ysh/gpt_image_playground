@@ -104,6 +104,8 @@ export interface AppSettings {
 
 export interface TaskParams {
   size: string
+  /** 提交 DragonCode 时的比例取值（1:1/16:9/auto 等），由 size 换算 */
+  sizeRatio?: string
   resolution: ImageResolution
   output_format: 'png' | 'jpeg' | 'webp'
   output_compression: number | null

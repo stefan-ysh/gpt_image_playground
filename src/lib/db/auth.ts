@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 import { mysqlPool } from './mysql';
 import { RowDataPacket } from 'mysql2';
 
@@ -9,73 +10,91 @@ export type CurrentUser = {
   role: string;
 };
 
-const DEFAULT_SESSION_COOKIE_NAMES = ['finance_session'];
+/** 本地会话 cookie：本项目自建认证，不再依赖 admin/ERP 的 finance_session */
+const LOCAL_SESSION_COOKIE = process.env.AUTH_SESSION_COOKIE_NAME || 'image_studio_session';
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-function getSessionCookieNames() {
-  const configured = process.env.AUTH_SESSION_COOKIE_NAMES
-    ?.split(',')
-    .map((name) => name.trim())
-    .filter(Boolean);
+// ---- 密码（scrypt，存储格式 "salt:hash"，与 scripts/manage-user.mjs 保持一致）----
 
-  return configured?.length ? configured : DEFAULT_SESSION_COOKIE_NAMES;
+export function hashPassword(password: string): string {
+  const salt = randomBytes(16).toString('hex');
+  const hash = scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+
+export function verifyPassword(password: string, stored: string | null): boolean {
+  if (!stored) return false;
+  const [salt, hash] = stored.split(':');
+  if (!salt || !hash) return false;
+  const expected = Buffer.from(hash, 'hex');
+  const actual = scryptSync(password, salt, expected.length);
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+}
+
+async function setSessionCookie(token: string) {
+  const cookieStore = await cookies();
+  cookieStore.set(LOCAL_SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: Math.floor(SESSION_TTL_MS / 1000),
+  });
+}
+
+/** 签发本地会话：登录成功后调用，写入会话表并下发 httpOnly cookie */
+export async function issueLocalSession(userId: string, userAgent: string | null): Promise<string> {
+  const pool = await mysqlPool();
+  const token = randomBytes(32).toString('hex');
+  const now = Date.now();
+  await pool.query(
+    'INSERT INTO playground_auth_sessions (session_token, user_id, expires_at, created_at, user_agent) VALUES (?, ?, ?, ?, ?)',
+    [token, userId, now + SESSION_TTL_MS, now, userAgent?.slice(0, 255) ?? null]
+  );
+  // 顺手清理该用户的过期会话
+  await pool.query('DELETE FROM playground_auth_sessions WHERE user_id = ? AND expires_at < ?', [userId, now]);
+  await setSessionCookie(token);
+  return token;
+}
+
+/** 注销：删除会话记录并清除 cookie */
+export async function destroyLocalSession(): Promise<void> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(LOCAL_SESSION_COOKIE)?.value;
+  if (token) {
+    const pool = await mysqlPool();
+    await pool.query('DELETE FROM playground_auth_sessions WHERE session_token = ?', [token]);
+  }
+  cookieStore.delete(LOCAL_SESSION_COOKIE);
 }
 
 export async function getCurrentUser(): Promise<CurrentUser | null> {
   const cookieStore = await cookies();
-  const token = getSessionCookieNames()
-    .map((name) => cookieStore.get(name)?.value)
-    .find(Boolean);
+  const token = cookieStore.get(LOCAL_SESSION_COOKIE)?.value;
   if (!token) return null;
 
   const pool = await mysqlPool();
 
   try {
-    // console.log('[Auth] Checking token:', token);
-    // 1. 查询 admin_cosmorigin 数据库中匹配 session_token 并且未过期的 session
-    const [sessionRows] = await pool.query<RowDataPacket[]>(
-      `SELECT user_id, expires_at FROM admin_cosmorigin.auth_sessions 
-       WHERE session_token = ? 
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT u.id, u.email, u.display_name, u.status, s.expires_at
+       FROM playground_auth_sessions s
+       JOIN playground_users u ON u.id = s.user_id
+       WHERE s.session_token = ?
        LIMIT 1`,
       [token]
     );
 
-    // console.log('[Auth] sessionRows:', sessionRows);
-
-    if (sessionRows.length === 0) {
-      // console.log('[Auth] Token not found in db');
-      return null;
-    }
-    
-    // Check expiration manually for debugging
-    const expiresAt = new Date(sessionRows[0].expires_at);
-    if (expiresAt.getTime() < Date.now()) {
-      // console.log('[Auth] Token expired. expires_at:', expiresAt, 'now:', new Date());
-      return null;
-    }
-
-    const userId = sessionRows[0].user_id;
-
-    // 2. 查询 admin_cosmorigin 数据库对应的 hr_employees 活跃用户信息
-    const [userRows] = await pool.query<RowDataPacket[]>(
-      `SELECT id, email, display_name, primary_role, is_active, employment_status 
-       FROM admin_cosmorigin.hr_employees 
-       WHERE id = ? LIMIT 1`,
-      [userId]
-    );
-
-    if (userRows.length === 0) return null;
-    const user = userRows[0];
-
-    // 校验活跃状态
-    if (user.is_active !== 1 || user.employment_status === 'terminated') {
-      return null;
-    }
+    if (rows.length === 0) return null;
+    const row = rows[0];
+    if (Number(row.expires_at) < Date.now()) return null;
+    if (row.status !== 'active') return null;
 
     return {
-      id: user.id,
-      email: user.email,
-      displayName: user.display_name,
-      role: user.primary_role,
+      id: row.id,
+      email: row.email,
+      displayName: row.display_name,
+      role: 'member',
     };
   } catch (error) {
     console.error('获取当前用户失败:', error);

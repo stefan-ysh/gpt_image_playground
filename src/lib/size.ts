@@ -220,22 +220,56 @@ export function isSupported4KRatio(sizeStr: string): boolean {
 
   const ratioStr = formatImageRatio(w, h)
   const cleanRatio = ratioStr.replace(/^≈/, '')
+  // DragonCode 文档：4k 仅支持 16:9、9:16、2:1、1:2、21:9、9:21
   const supported = [
-    '1:1',
-    '3:2',
-    '2:3',
-    '4:3',
-    '3:4',
-    '5:4',
-    '4:5',
     '16:9',
     '9:16',
     '2:1',
     '1:2',
-    '3:1',
-    '1:3',
     '21:9',
     '9:21',
   ]
   return supported.includes(cleanRatio)
+}
+
+/**
+ * DragonCode 文档支持的 size 取值：auto + 13 种固定比例。
+ * 4k 档仅支持其中的宽屏子集（见 isSupported4KRatio）。
+ */
+const DRAGON_SUPPORTED_RATIOS: Array<[string, number, number]> = [
+  ['1:1', 1, 1],
+  ['3:2', 3, 2],
+  ['2:3', 2, 3],
+  ['4:3', 4, 3],
+  ['3:4', 3, 4],
+  ['5:4', 5, 4],
+  ['4:5', 4, 5],
+  ['16:9', 16, 9],
+  ['9:16', 9, 16],
+  ['2:1', 2, 1],
+  ['1:2', 1, 2],
+  ['21:9', 21, 9],
+  ['9:21', 9, 21],
+]
+
+/**
+ * 把本地像素尺寸（1024x1536）、比例字符串（2:3）或 auto 转成 DragonCode 文档要求的
+ * size 取值；比例不在支持列表时吸附到最接近的支持比例，保证请求不会被网关拒绝。
+ */
+export function toDragonSizeRatio(size: string | null | undefined): string | null {
+  const trimmed = (size ?? '').trim()
+  if (!trimmed) return null
+  if (trimmed.toLowerCase() === 'auto') return 'auto'
+
+  const parsed = parseRatio(trimmed)
+  if (!parsed) return null
+
+  const target = parsed.width / parsed.height
+  let best: { label: string; delta: number } | null = null
+  for (const [label, w, h] of DRAGON_SUPPORTED_RATIOS) {
+    if (Math.abs(w / h - target) / target < 1e-9) return label
+    const delta = Math.abs(w / h - target) / target
+    if (!best || delta < best.delta) best = { label, delta }
+  }
+  return best?.label ?? null
 }
