@@ -27,12 +27,6 @@ export default function Sidebar() {
   const showToast = useStore((s) => s.showToast)
 
   // 用户区操作状态
-  const [showPasswordModal, setShowPasswordModal] = useState(false)
-  const [newPassword, setNewPassword] = useState('')
-  const [changingPassword, setChangingPassword] = useState(false)
-  const [showNameModal, setShowNameModal] = useState(false)
-  const [displayNameInput, setDisplayNameInput] = useState('')
-  const [changingName, setChangingName] = useState(false)
 
   // GroupDialog 弹窗控制状态
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false)
@@ -243,26 +237,6 @@ export default function Sidebar() {
               )}
               <button
                 type="button"
-                onClick={() => { setShowNameModal(true); setDisplayNameInput(currentUser.displayName || '') }}
-                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/[0.06]"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-                修改昵称
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowPasswordModal(true); setNewPassword('') }}
-                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/[0.06]"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 2a8 8 0 11-16 0 8 8 0 0116 0zm-10 4h4m-2-4v8" />
-                </svg>
-                修改密码
-              </button>
-              <button
-                type="button"
                 onClick={async () => {
                   try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }) } catch {}
                   window.location.href = '/signin'
@@ -278,121 +252,6 @@ export default function Sidebar() {
           )}
         </div>
       </aside>
-
-      {/* 修改昵称弹窗 */}
-      {showNameModal && (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={() => setShowNameModal(false)}>
-          <div
-            className="w-full max-w-sm rounded-2xl border border-gray-100 bg-white p-6 shadow-xl dark:border-gray-800 dark:bg-gray-900"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">修改昵称</h3>
-            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">昵称会显示在侧边栏和任务归属信息中。</p>
-            <input
-              type="text"
-              value={displayNameInput}
-              onChange={(e) => setDisplayNameInput(e.target.value)}
-              maxLength={50}
-              placeholder="输入新昵称"
-              className="mt-4 h-10 w-full rounded-xl border border-gray-200 px-3 text-sm outline-none focus:border-blue-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-            />
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowNameModal(false)}
-                className="rounded-xl px-4 py-2 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                disabled={changingName || !displayNameInput.trim()}
-                onClick={async () => {
-                  setChangingName(true)
-                  try {
-                    const res = await fetch('/api/auth/display-name', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      credentials: 'include',
-                      body: JSON.stringify({ displayName: displayNameInput.trim() }),
-                    })
-                    const json = await res.json().catch(() => null)
-                    if (json?.success && json.data) {
-                      useStore.getState().setCurrentUser(json.data)
-                      showToast('昵称已更新', 'success')
-                      setShowNameModal(false)
-                    } else {
-                      showToast(json?.error || '修改失败', 'error')
-                    }
-                  } finally {
-                    setChangingName(false)
-                  }
-                }}
-                className="rounded-xl bg-blue-500 px-4 py-2 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-40"
-              >
-                确认修改
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 修改密码弹窗 */}
-      {showPasswordModal && (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={() => setShowPasswordModal(false)}>
-          <div
-            className="w-full max-w-sm rounded-2xl border border-gray-100 bg-white p-6 shadow-xl dark:border-gray-800 dark:bg-gray-900"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">修改密码</h3>
-            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">为当前账号 {currentUser?.email} 设置新密码（至少 8 位）。</p>
-            <input
-              type="text"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="输入新密码"
-              className="mt-4 h-10 w-full rounded-xl border border-gray-200 px-3 text-sm outline-none focus:border-blue-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-            />
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowPasswordModal(false)}
-                className="rounded-xl px-4 py-2 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                disabled={changingPassword || newPassword.length < 8}
-                onClick={async () => {
-                  setChangingPassword(true)
-                  try {
-                    const res = await fetch('/api/auth/password', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      credentials: 'include',
-                      body: JSON.stringify({ newPassword }),
-                    })
-                    const json = await res.json().catch(() => null)
-                    if (json?.success) {
-                      showToast('密码修改成功', 'success')
-                      setShowPasswordModal(false)
-                    } else {
-                      showToast(json?.error || '修改失败', 'error')
-                    }
-                  } finally {
-                    setChangingPassword(false)
-                  }
-                }}
-                className="rounded-xl bg-blue-500 px-4 py-2 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-40"
-              >
-                确认修改
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 分组操作的弹窗组件 */}
       <GroupDialog
         isOpen={isGroupDialogOpen}

@@ -107,7 +107,7 @@ function isErrorToastTitle(title: string): boolean {
   return /(?:失败|错误|异常|报错|无法|不能|超时|中断|断开|请先|请输入|已达上限|不存在|已丢失)$/.test(title)
 }
 
-export type SettingsTab = 'general' | 'data' | 'about'
+export type SettingsTab = 'general' | 'account' | 'data' | 'about'
 type ThemePreference = AppSettings['theme']
 const THEME_STORAGE_KEY = 'gpt-image-theme'
 

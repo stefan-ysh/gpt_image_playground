@@ -293,7 +293,13 @@ export default function SettingsModal() {
   const [profileImportUrlTooltipVisible, setProfileImportUrlTooltipVisible] = useState(false)
   const [duplicateProfileTooltipVisible, setDuplicateProfileTooltipVisible] = useState(false)
   const [llmPromptTooltipVisible, setLlmPromptTooltipVisible] = useState(false)
+  const currentUser = useStore((s) => s.currentUser)
+  const setCurrentUser = useStore((s) => s.setCurrentUser)
   const [activeTab, setActiveTab] = useState<SettingsTab>('general')
+  const [nicknameDraft, setNicknameDraft] = useState('')
+  const [savingNickname, setSavingNickname] = useState(false)
+  const [accountPasswordDraft, setAccountPasswordDraft] = useState('')
+  const [savingAccountPassword, setSavingAccountPassword] = useState(false)
   const [exportGroupId, setExportGroupId] = useState('__all__')
   const [isImportingJson, setIsImportingJson] = useState(false)
   const [draggedProfileId, setDraggedProfileId] = useState<string | null>(null)
@@ -1019,6 +1025,15 @@ export default function SettingsModal() {
                 习惯配置
               </button>
               <button
+                onClick={() => setActiveTab('account')}
+                className={`whitespace-nowrap flex-shrink-0 flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-xl transition-colors ${activeTab === 'account' ? 'bg-white dark:bg-white/[0.08] shadow-sm text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-white/[0.04]'}`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                账号
+              </button>
+              <button
                 onClick={() => setActiveTab('data')}
                 className={`whitespace-nowrap flex-shrink-0 flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-xl transition-colors ${activeTab === 'data' ? 'bg-white dark:bg-white/[0.08] shadow-sm text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-white/[0.04]'}`}
               >
@@ -1169,6 +1184,112 @@ export default function SettingsModal() {
               </div>
             )}
             
+            {activeTab === 'account' && (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-gray-100 bg-white p-4 dark:border-white/[0.06] dark:bg-white/[0.02] space-y-4 shadow-sm">
+                  <div className="flex items-center gap-2 mb-1">
+                    <svg className="w-4 h-4 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    <h4 className="text-sm font-bold text-gray-800 dark:text-gray-100">个人信息</h4>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="block text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">登录账号</span>
+                    <span className="text-xs text-gray-700 dark:text-gray-200 font-mono">{currentUser?.email || '—'}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="block text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">昵称</span>
+                    <div className="flex w-56 items-center gap-2">
+                      <input
+                        type="text"
+                        value={nicknameDraft}
+                        maxLength={50}
+                        placeholder={currentUser?.displayName || '输入新昵称'}
+                        onChange={(e) => setNicknameDraft(e.target.value)}
+                        className="h-9 w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 text-xs text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
+                      />
+                      <button
+                        type="button"
+                        disabled={savingNickname || !nicknameDraft.trim()}
+                        onClick={async () => {
+                          setSavingNickname(true)
+                          try {
+                            const res = await fetch('/api/auth/display-name', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              credentials: 'include',
+                              body: JSON.stringify({ displayName: nicknameDraft.trim() }),
+                            })
+                            const json = await res.json().catch(() => null)
+                            if (json?.success && json.data) {
+                              setCurrentUser(json.data)
+                              showToast('昵称已更新', 'success')
+                              setNicknameDraft('')
+                            } else {
+                              showToast(json?.error || '修改失败', 'error')
+                            }
+                          } finally {
+                            setSavingNickname(false)
+                          }
+                        }}
+                        className="whitespace-nowrap rounded-xl bg-blue-500 px-3 py-2 text-xs font-medium text-white transition hover:bg-blue-600 disabled:opacity-40"
+                      >
+                        {savingNickname ? '保存中…' : '保存'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-gray-100 bg-white p-4 dark:border-white/[0.06] dark:bg-white/[0.02] space-y-4 shadow-sm">
+                  <div className="flex items-center gap-2 mb-1">
+                    <svg className="w-4 h-4 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    <h4 className="text-sm font-bold text-gray-800 dark:text-gray-100">安全设置</h4>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="block text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">修改密码</span>
+                    <div className="flex w-56 items-center gap-2">
+                      <input
+                        type="password"
+                        value={accountPasswordDraft}
+                        placeholder="输入新密码（至少 8 位）"
+                        onChange={(e) => setAccountPasswordDraft(e.target.value)}
+                        className="h-9 w-full rounded-xl border border-gray-200/70 bg-white/60 px-3 text-xs text-gray-700 outline-none transition focus:border-blue-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200 dark:focus:border-blue-500/50"
+                      />
+                      <button
+                        type="button"
+                        disabled={savingAccountPassword || accountPasswordDraft.length < 8}
+                        onClick={async () => {
+                          setSavingAccountPassword(true)
+                          try {
+                            const res = await fetch('/api/auth/password', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              credentials: 'include',
+                              body: JSON.stringify({ newPassword: accountPasswordDraft }),
+                            })
+                            const json = await res.json().catch(() => null)
+                            if (json?.success) {
+                              showToast('密码修改成功', 'success')
+                              setAccountPasswordDraft('')
+                            } else {
+                              showToast(json?.error || '修改失败', 'error')
+                            }
+                          } finally {
+                            setSavingAccountPassword(false)
+                          }
+                        }}
+                        className="whitespace-nowrap rounded-xl bg-blue-500 px-3 py-2 text-xs font-medium text-white transition hover:bg-blue-600 disabled:opacity-40"
+                      >
+                        {savingAccountPassword ? '修改中…' : '修改'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {activeTab === 'data' && (
               <div className="space-y-4">
                 <div className="rounded-2xl border border-gray-100 bg-white p-4 dark:border-white/[0.06] dark:bg-white/[0.02] space-y-4 shadow-sm">

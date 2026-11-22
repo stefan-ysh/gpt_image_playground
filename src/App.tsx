@@ -16,7 +16,6 @@ import ConfirmDialog from './components/ConfirmDialog'
 import Toast from './components/Toast'
 import MaskEditorModal from './components/MaskEditorModal'
 import ImageContextMenu from './components/ImageContextMenu'
-import SupportPromptModal from './components/SupportPromptModal'
 import ShowcaseModal from './components/ShowcaseModal'
 import { useGlobalClickSuppression } from './lib/clickSuppression'
 import AuthGuard from './components/auth/AuthGuard'
@@ -78,7 +77,6 @@ export default function App() {
       <Lightbox />
       <SettingsModal />
       <ConfirmDialog />
-      <SupportPromptModal />
       {showShowcase && <ShowcaseModal onClose={() => setShowShowcase(false)} />}
       <Toast />
       <MaskEditorModal />
