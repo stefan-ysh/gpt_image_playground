@@ -6,6 +6,9 @@ import { env } from '@/lib/env';
 
 export const runtime = 'nodejs';
 
+// 302 跳转签名直链的有效期：足够浏览器立即发起下载，过期后重新鉴权换新链接
+const SIGNED_URL_EXPIRES_SECONDS = 600;
+
 function badRequestResponse(message: string) {
   return NextResponse.json({ success: false, error: message }, { status: 400 });
 }
@@ -41,55 +44,44 @@ export async function GET(
       SecretKey: config.secretKey,
     });
 
-    const object = await new Promise<{
-      body: Buffer;
-      contentType?: string;
-      contentLength?: string;
-      etag?: string;
-    }>((resolve, reject) => {
-      cos.getObject(
+    // 内容寻址的 SHA-256 路径不可变：让 COS 直接下发一年期 immutable 缓存头，
+    // 浏览器跨会话复用本地缓存，图片字节不再经过本机中转
+    const query: Record<string, string> = {
+      'response-cache-control': 'max-age=31536000, immutable',
+      'response-content-type': mime.getType(key) || 'application/octet-stream',
+    };
+    const fileName = new URL(request.url).searchParams.get('filename')?.trim();
+    if (fileName) {
+      query['response-content-disposition'] =
+        `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+    }
+
+    const signedUrl = await new Promise<string>((resolve, reject) => {
+      cos.getObjectUrl(
         {
           Bucket: config.bucket!,
           Region: config.region!,
           Key: key,
+          Sign: true,
+          Expires: SIGNED_URL_EXPIRES_SECONDS,
+          Query: query,
         },
         (err, data) => {
           if (err) {
             reject(err);
             return;
           }
-          const rawBody = data?.Body;
-          const bodyBuffer = Buffer.isBuffer(rawBody)
-            ? rawBody
-            : Buffer.from(typeof rawBody === 'string' ? rawBody : '');
-          resolve({
-            body: bodyBuffer,
-            contentType: data?.headers?.['content-type'],
-            contentLength: data?.headers?.['content-length'],
-            etag: data?.headers?.etag,
-          });
+          resolve(data.Url);
         }
       );
     });
 
-    const guessedType = mime.getType(key) || 'application/octet-stream';
-    const contentType = object.contentType || guessedType;
-
-    const searchParams = new URL(request.url).searchParams;
-    const fileName = searchParams.get('filename')?.trim();
-    const headers = new Headers({
-      'Content-Type': contentType,
-      'Cache-Control': 'private, max-age=31536000, immutable',
+    return NextResponse.redirect(signedUrl, {
+      status: 302,
+      headers: { 'Cache-Control': 'private, no-store' },
     });
-    if (object.contentLength) headers.set('Content-Length', object.contentLength);
-    if (object.etag) headers.set('ETag', object.etag);
-    if (fileName) {
-      headers.set('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`);
-    }
-
-    return new NextResponse(new Uint8Array(object.body), { headers });
   } catch (error) {
-    console.error('读取 COS 文件失败:', error);
+    console.error('生成 COS 签名直链失败:', error);
     return NextResponse.json({ success: false, error: '读取文件失败' }, { status: 404 });
   }
 }
