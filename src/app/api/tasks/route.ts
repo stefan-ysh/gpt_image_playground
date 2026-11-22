@@ -99,7 +99,13 @@ export async function GET(request: Request) {
 
     const hasMore = rows.length > limit;
     const records = hasMore ? rows.slice(0, limit) : rows;
-    const tasks = records.map(rowToTaskRecord);
+    const tasks = records.map((row) => {
+      const record = rowToTaskRecord(row);
+      // 原始响应调试字段单条可达数百 KB，列表不回传，详情接口按需获取
+      const { rawResponsePayload, ...slim } = record;
+      void rawResponsePayload;
+      return slim;
+    });
 
     return NextResponse.json({
       success: true,

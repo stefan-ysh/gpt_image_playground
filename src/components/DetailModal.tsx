@@ -33,6 +33,8 @@ export default function DetailModal() {
   const [now, setNow] = useState(Date.now())
   const [showRawUrlsModal, setShowRawUrlsModal] = useState(false)
   const [showRawResponseModal, setShowRawResponseModal] = useState(false)
+  const [fetchedRawPayload, setFetchedRawPayload] = useState<string | null>(null)
+  const [fetchingRawPayload, setFetchingRawPayload] = useState(false)
   const [isTransferringImages, setIsTransferringImages] = useState(false)
   const [streamPreviewLoaded, setStreamPreviewLoaded] = useState(false)
   const [mainImageLoaded, setMainImageLoaded] = useState(false)
@@ -675,14 +677,34 @@ export default function DetailModal() {
                     复制完整报错
                   </ViewportTooltip>
                 </div>
-                {task.rawResponsePayload && (
+                {(task.rawResponsePayload || task.status === 'error') && (
                   <div className="relative group">
                     <button
                       type="button"
                       {...viewRawResponseTooltip.handlers}
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         dismissAllTooltips()
-                        setShowRawResponseModal(true)
+                        if (task.rawResponsePayload) {
+                          setShowRawResponseModal(true)
+                          return
+                        }
+                        // 列表接口不回传原始响应调试字段，打开前按需从详情接口获取
+                        try {
+                          setFetchingRawPayload(true)
+                          const res = await fetch(`/api/tasks/${task.id}`, { credentials: 'include' })
+                          const json = await res.json()
+                          const payload = json?.success ? json.data?.rawResponsePayload : undefined
+                          if (payload) {
+                            setFetchedRawPayload(payload)
+                            setShowRawResponseModal(true)
+                          } else {
+                            showToast('该任务没有保存原始响应', 'info')
+                          }
+                        } catch {
+                          showToast('获取原始响应失败', 'error')
+                        } finally {
+                          setFetchingRawPayload(false)
+                        }
                       }}
                       className="inline-flex items-center justify-center rounded-full border border-purple-200/80 bg-purple-50 px-3 py-1.5 text-purple-600 transition hover:bg-purple-100 dark:border-purple-500/20 dark:bg-purple-500/10 dark:text-purple-400 dark:hover:bg-purple-500/20"
                       aria-label="查看原始响应"
@@ -1080,7 +1102,7 @@ export default function DetailModal() {
         </div>
       )}
 
-      {showRawResponseModal && task?.rawResponsePayload && (
+      {showRawResponseModal && (task?.rawResponsePayload || fetchedRawPayload) && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm sm:p-6"
           onPointerDown={(e) => {
@@ -1107,7 +1129,7 @@ export default function DetailModal() {
                   type="button"
                   onClick={async () => {
                     try {
-                      await copyTextToClipboard(task.rawResponsePayload!)
+                      await copyTextToClipboard(task.rawResponsePayload ?? fetchedRawPayload ?? '')
                       showToast('复制成功', 'success')
                     } catch (err) {
                       showToast(getClipboardFailureMessage('复制失败', err), 'error')
@@ -1129,7 +1151,7 @@ export default function DetailModal() {
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto p-5 bg-gray-50/50 dark:bg-black/20 overscroll-contain">
               <pre data-selectable-text className="text-[11px] sm:text-xs text-gray-600 dark:text-gray-300 font-mono whitespace-pre-wrap break-all select-text">
-                {task.rawResponsePayload.replace(/"(b64_json|base64|data)":\s*"[^"]+"/g, '"$1": "<base64_data>"')}
+                {(task.rawResponsePayload ?? fetchedRawPayload ?? '').replace(/"(b64_json|base64|data)":\s*"[^"]+"/g, '"$1": "<base64_data>"')}
               </pre>
             </div>
           </div>

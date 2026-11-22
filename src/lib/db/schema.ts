@@ -2,16 +2,54 @@ import { mysqlPool } from './mysql';
 import { collectTaskRowImageRefs, getTaskImageIdHash } from './task-images';
 
 let initialized = false;
-
+let initPromise: Promise<void> | null = null;
+const SCHEMA_VERSION = '2026-11-22-1';
 const ID_SQL = 'VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin';
 const USER_ID_SQL = 'CHAR(36) CHARACTER SET ascii COLLATE ascii_bin';
 const HASH_SQL = 'CHAR(64) CHARACTER SET ascii COLLATE ascii_bin';
 const ROLE_SQL = 'VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin';
 
-export async function ensurePlaygroundSchema() {
-  if (initialized) return;
+/**
+ * 并发安全：多个请求同时冷启动时共享同一个初始化 promise，
+ * 避免 DDL 在 MySQL 元数据锁上互相排队造成请求集体超时。
+ */
+export function ensurePlaygroundSchema(): Promise<void> {
+  if (initialized) return Promise.resolve();
+  if (!initPromise) {
+    initPromise = runSchemaInit()
+      .then(() => {
+        initialized = true;
+      })
+      .catch((err) => {
+        initPromise = null;
+        throw err;
+      });
+  }
+  return initPromise;
+}
 
+async function runSchemaInit() {
   const pool = await mysqlPool();
+
+  // 先确保 app_state 表存在（版本标记的载体），再判断是否需要执行迁移
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS playground_app_state (
+      id ${ID_SQL} NOT NULL,
+      user_id ${USER_ID_SQL} NOT NULL,
+      value LONGTEXT NOT NULL,
+      PRIMARY KEY (id, user_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC;
+  `);
+
+  const [versionRows] = await pool.query<any[]>(
+    'SELECT value FROM playground_app_state WHERE id = ? AND user_id = ? LIMIT 1',
+    ['playground_schema_version', 'system']
+  );
+  // 版本一致说明整套 DDL 与数据回填已完成，冷启动直接跳过（变更表结构时递增 SCHEMA_VERSION）
+  if (versionRows[0]?.value === SCHEMA_VERSION) {
+    initialized = true;
+    return;
+  }
 
   // 1. 创建 playground_images 表
   await pool.query(`
@@ -128,20 +166,6 @@ export async function ensurePlaygroundSchema() {
     }
   }
   await pool.query(taskImagesSql);
-
-  // 5. 创建 playground_app_state 表
-  let appStateSql = `
-    CREATE TABLE IF NOT EXISTS playground_app_state (
-      id ${ID_SQL} NOT NULL,
-      user_id ${USER_ID_SQL} NOT NULL,
-      value LONGTEXT NOT NULL,
-      PRIMARY KEY (id, user_id)
-  `;
-  if (hasHrEmployees) {
-    appStateSql += `, CONSTRAINT fk_playground_app_state_user FOREIGN KEY (user_id) REFERENCES hr_employees(id) ON DELETE CASCADE`;
-  }
-  appStateSql += `) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC;`;
-  await pool.query(appStateSql);
 
   // 5.5 创建 playground_groups 表
   let groupsSql = `
@@ -292,5 +316,8 @@ export async function ensurePlaygroundSchema() {
     console.warn('Failed to backfill playground_image_owners:', e);
   }
 
-  initialized = true;
+  await pool.query(
+    'INSERT INTO playground_app_state (id, user_id, value) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)',
+    ['playground_schema_version', 'system', SCHEMA_VERSION]
+  );
 }
