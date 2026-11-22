@@ -4,6 +4,7 @@ import { mysqlPool } from '@/lib/db/mysql';
 import { ensurePlaygroundSchema } from '@/lib/db/schema';
 import { handleApiError } from '@/lib/api-error';
 import { requireAdminUser } from '@/lib/db/auth';
+import { getUnitPrice, getUnitPrices } from '@/lib/pricing';
 
 export const runtime = 'nodejs';
 
@@ -30,6 +31,27 @@ export async function GET() {
     );
     const r = rows[0] ?? {};
 
+    // 花费估算：按文档规则（完成任务按 resolution 档位计费、每任务 1 张）本地推算
+    // 注：部分宝塔 MySQL 版本无 JSON 函数，取 actual_params 在 Node 侧解析
+    const [resRows] = await pool.query<RowDataPacket[]>(
+      `SELECT actual_params, finished_at FROM playground_tasks WHERE status = 'done'`
+    );
+    let costTotal = 0;
+    let costToday = 0;
+    for (const row of resRows) {
+      let resolution: string | null = null;
+      try {
+        const parsed = typeof row.actual_params === 'string' ? JSON.parse(row.actual_params) : row.actual_params;
+        resolution = typeof parsed?.resolution === 'string' ? parsed.resolution : null;
+      } catch {
+        resolution = null;
+      }
+      const amount = getUnitPrice(resolution);
+      costTotal += amount;
+      const finishedAt = Number(row.finished_at);
+      if (finishedAt >= todayStart) costToday += amount;
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -41,6 +63,9 @@ export async function GET() {
         doneToday: Number(r.done_today) || 0,
         imagesTotal: Number(r.images_total) || 0,
         transfersPending: Number(r.transfers_pending) || 0,
+        costTotal: Math.round(costTotal * 100) / 100,
+        costToday: Math.round(costToday * 100) / 100,
+        pricing: getUnitPrices(),
       },
     });
   } catch (error) {

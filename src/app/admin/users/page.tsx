@@ -16,9 +16,12 @@ interface AdminUser {
   lastLoginAt: string | null
   taskCount: number
   doneCount: number
+  doneToday: number
   imageCount: number
   activeSessions: number
   usedToday: number
+  costTotal: number
+  costToday: number
 }
 
 interface AdminStats {
@@ -30,6 +33,9 @@ interface AdminStats {
   doneToday: number
   imagesTotal: number
   transfersPending: number
+  costTotal: number
+  costToday: number
+  pricing: { currency: string; prices: { '1k': number; '2k': number; '4k': number } }
 }
 
 function fmtDate(value: string | null): string {
@@ -199,8 +205,11 @@ export default function AdminUsersPage() {
     )
   }
 
-  const statCards: Array<{ label: string; value: number | string }> = stats
+  const currency = stats?.pricing.currency ?? '¥'
+  const statCards: Array<{ label: string; value: number | string; accent?: boolean }> = stats
     ? [
+        { label: '今日花费', value: `${currency}${stats.costToday.toFixed(2)}`, accent: true },
+        { label: '累计花费', value: `${currency}${stats.costTotal.toFixed(2)}`, accent: true },
         { label: '用户（活跃）', value: `${stats.usersTotal}（${stats.usersActive}）` },
         { label: '任务总数', value: `${stats.tasksTotal}（完成 ${stats.tasksDone}）` },
         { label: '进行中任务', value: stats.tasksInFlight },
@@ -213,29 +222,46 @@ export default function AdminUsersPage() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       <div className="mx-auto max-w-6xl px-4 py-8">
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-4 flex items-center justify-between">
           <div>
             <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">用户管理</h1>
-            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">超级管理员控制台 · 每日用量按北京时间自然日统计</p>
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+              超级管理员控制台 · 每日用量按北京时间自然日统计
+              {stats?.pricing && (
+                <span className="ml-2">
+                  单价估算：1k {currency}{stats.pricing.prices['1k']} · 2k {currency}{stats.pricing.prices['2k']} · 4k {currency}{stats.pricing.prices['4k']}
+                </span>
+              )}
+            </p>
           </div>
-          <a href="/" className="rounded-xl border border-gray-200 px-4 py-2 text-xs font-medium text-gray-600 transition hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">
-            返回工作区
-          </a>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void load()}
+              disabled={loading}
+              className="rounded-xl border border-gray-200 px-4 py-2 text-xs font-medium text-gray-600 transition hover:bg-gray-100 disabled:opacity-40 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              {loading ? '刷新中…' : '刷新'}
+            </button>
+            <a href="/" className="rounded-xl border border-gray-200 px-4 py-2 text-xs font-medium text-gray-600 transition hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">
+              返回工作区
+            </a>
+          </div>
         </div>
 
         {stats && (
           <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {statCards.map((card) => (
-              <div key={card.label} className="rounded-2xl border border-gray-100 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
+              <div key={card.label} className={`rounded-2xl border p-4 ${card.accent ? 'border-blue-100 bg-blue-50/60 dark:border-blue-500/20 dark:bg-blue-500/10' : 'border-gray-100 bg-white dark:border-gray-800 dark:bg-gray-900'}`}>
                 <div className="text-[11px] text-gray-400 dark:text-gray-500">{card.label}</div>
-                <div className="mt-1.5 text-xl font-semibold text-gray-900 dark:text-gray-100">{card.value}</div>
+                <div className={`mt-1.5 text-xl font-semibold ${card.accent ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-gray-100'}`}>{card.value}</div>
               </div>
             ))}
           </div>
         )}
 
-        <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white dark:border-gray-800 dark:bg-gray-900">
-          <table className="w-full text-left text-xs">
+        <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white dark:border-gray-800 dark:bg-gray-900">
+          <table className="w-full min-w-[900px] text-left text-xs">
             <thead className="bg-gray-50 text-gray-400 dark:bg-gray-800/60 dark:text-gray-500">
               <tr>
                 <th className="px-4 py-3 font-medium">用户</th>
@@ -243,6 +269,7 @@ export default function AdminUsersPage() {
                 <th className="px-3 py-3 font-medium">任务</th>
                 <th className="px-3 py-3 font-medium">今日用量</th>
                 <th className="px-3 py-3 font-medium">图片</th>
+                <th className="px-3 py-3 font-medium">花费（今日/累计）</th>
                 <th className="px-3 py-3 font-medium">登录</th>
                 <th className="px-3 py-3 font-medium">最近登录</th>
                 <th className="px-3 py-3 font-medium">操作</th>
@@ -250,10 +277,10 @@ export default function AdminUsersPage() {
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-gray-800/60">
               {loading && (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">加载中…</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">加载中…</td></tr>
               )}
               {!loading && users.length === 0 && (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">暂无用户</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">暂无用户</td></tr>
               )}
               {users.map((user) => (
                 <tr key={user.id} className="text-gray-700 dark:text-gray-200">
@@ -286,6 +313,13 @@ export default function AdminUsersPage() {
                     </span>
                   </td>
                   <td className="px-3 py-3">{user.imageCount}</td>
+                  <td className="px-3 py-3">
+                    <span className={user.costToday > 0 ? 'font-semibold text-blue-600 dark:text-blue-400' : 'text-gray-400'}>
+                      {currency}{user.costToday.toFixed(2)}
+                    </span>
+                    <span className="text-gray-300 dark:text-gray-600"> / </span>
+                    <span>{currency}{user.costTotal.toFixed(2)}</span>
+                  </td>
                   <td className="px-3 py-3">
                     {user.loginCount} 次{user.activeSessions > 0 && <span className="ml-1 text-[10px] text-blue-500">· {user.activeSessions} 会话</span>}
                   </td>
