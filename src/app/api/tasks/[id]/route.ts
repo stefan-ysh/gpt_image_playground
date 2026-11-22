@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { RowDataPacket } from 'mysql2'
+import { RowDataPacket, ResultSetHeader } from 'mysql2'
 import { requireCurrentUser } from '@/lib/db/auth'
 import { mysqlPool } from '@/lib/db/mysql'
 import { ensurePlaygroundSchema } from '@/lib/db/schema'
@@ -131,5 +131,31 @@ export async function GET(
     })
   } catch (error) {
     return handleApiError(error, '读取任务')
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ id: string }> } | { params: { id: string } },
+) {
+  try {
+    const user = await requireCurrentUser()
+    await ensurePlaygroundSchema()
+
+    const params = await Promise.resolve(context.params)
+    const taskId = params.id
+
+    const pool = await mysqlPool()
+    const [result] = await pool.query<ResultSetHeader>(
+      'DELETE FROM playground_tasks WHERE id = ? AND user_id = ?',
+      [taskId, user.id],
+    )
+
+    return NextResponse.json({
+      success: true,
+      data: { deleted: result.affectedRows > 0 },
+    })
+  } catch (error) {
+    return handleApiError(error, '删除任务')
   }
 }

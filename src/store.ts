@@ -2759,6 +2759,21 @@ export async function editOutputs(task: TaskRecord) {
   showToast(`已添加 ${added} 张输出图到输入`, 'success')
 }
 
+/** 同步删除服务端任务：本地删除后若不清理 MySQL，列表刷新时任务会复活 */
+async function deleteTaskOnServer(taskId: string): Promise<void> {
+  try {
+    const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    })
+    if (!res.ok) {
+      console.error('远程删除任务失败: HTTP', res.status)
+    }
+  } catch (err) {
+    console.error('远程删除任务失败:', err)
+  }
+}
+
 /** 删除多条任务 */
 export async function removeMultipleTasks(taskIds: string[]) {
   const { tasks, setTasks, inputImages, galleryInputDraft, showToast, clearSelection, selectedTaskIds } = useStore.getState()
@@ -2784,6 +2799,7 @@ export async function removeMultipleTasks(taskIds: string[]) {
   for (const id of taskIds) {
     await dbDeleteTask(id, Array.from(stillUsed))
   }
+  await Promise.all(taskIds.map((id) => deleteTaskOnServer(id)))
 
   // 删除孤立图片
   for (const imgId of deletedImageIds) {
@@ -2821,6 +2837,7 @@ export async function removeTask(task: TaskRecord) {
   // 找出其他任务或当前输入仍引用的图片
   const stillUsed = collectStillReferencedImageIds(remaining, inputImages, galleryInputDraft)
   await dbDeleteTask(task.id, Array.from(stillUsed))
+  await deleteTaskOnServer(task.id)
 
   // 删除孤立图片
   for (const imgId of taskImageIds) {
