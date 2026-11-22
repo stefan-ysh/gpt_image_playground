@@ -4,7 +4,7 @@ import type { ImageResolution } from './lib/resolution'
 
 export type ApiMode = 'images' | 'responses'
 export type ReferenceImageEditAction = 'ask' | 'replace-reference' | 'add-mask'
-export type BuiltInApiProvider = 'openai' | 'fal'
+export type BuiltInApiProvider = 'openai'
 export type ApiProvider = BuiltInApiProvider | string
 export type CustomProviderTemplate = 'http-image'
 export const DEFAULT_STREAM_PARTIAL_IMAGES = 1
@@ -172,12 +172,6 @@ export interface TaskRecord {
   /** 生成时使用的自定义服务商配置快照 */
   customProviderSnapshot?: CustomProviderDefinition
 
-  /** fal.ai 队列请求 ID，用于连接断开后的结果恢复 */
-  falRequestId?: string
-  /** fal.ai 队列 endpoint，用于连接断开后的状态和结果查询 */
-  falEndpoint?: string
-  /** fal.ai 任务连接断开后是否等待自动恢复 */
-  falRecoverable?: boolean
   /** 自定义异步服务商任务 ID，用于重启后继续查询结果 */
   customTaskId?: string
   /** 自定义异步任务是否等待自动恢复 */

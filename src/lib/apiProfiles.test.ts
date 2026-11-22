@@ -10,12 +10,7 @@ import {
   switchApiProfileProvider,
   DRAGONCODE_PROVIDER_ID,
   DRAGONCODE_PROVIDER_DEFINITION,
-  FREEGEN_BASE_URL,
-  FREEGEN_INTERNAL_API_KEY,
-  FREEGEN_MODEL,
-  FREEGEN_PROVIDER_ID,
   normalizeApiProfile,
-  validateApiProfile,
 } from './apiProfiles'
 
 declare const process: {
@@ -76,22 +71,6 @@ describe('apiProfiles', () => {
     expect(normalized.provider).toBe(DRAGONCODE_PROVIDER_ID)
     expect(normalized.baseUrl).toBe('https://dragoncode.codes/gpt-image/v1')
     expect(normalized.model).toBe('gpt-image-2')
-  })
-
-  it('normalizes z-image to the internal Freegen provider without env API settings', () => {
-    const normalized = normalizeApiProfile({
-      id: 'freegen-profile',
-      name: 'z-image',
-      provider: 'openai',
-      baseUrl: 'https://example.invalid/v1',
-      apiKey: '',
-      model: FREEGEN_MODEL,
-    })
-
-    expect(normalized.provider).toBe(FREEGEN_PROVIDER_ID)
-    expect(normalized.baseUrl).toBe(FREEGEN_BASE_URL)
-    expect(normalized.apiKey).toBe(FREEGEN_INTERNAL_API_KEY)
-    expect(validateApiProfile(normalized)).toBeNull()
   })
 
   it('sets apiProxy based on proxy availability when switching provider to DragonCode', () => {

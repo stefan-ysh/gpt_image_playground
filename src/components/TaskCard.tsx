@@ -291,7 +291,7 @@ export default function TaskCard({
   useEffect(() => {
     const shouldTick =
       isTaskRunning(task.status) ||
-      (task.status === 'error' && (task.falRecoverable || task.customRecoverable))
+      (task.status === 'error' && task.customRecoverable)
 
     if (!shouldTick) return
 
@@ -299,7 +299,7 @@ export default function TaskCard({
     setNow(Date.now())
 
     return () => clearInterval(id)
-  }, [task.customRecoverable, task.falRecoverable, task.status])
+  }, [task.customRecoverable, task.status])
 
   // 加载缩略图
   useEffect(() => {
@@ -346,7 +346,7 @@ export default function TaskCard({
 
   const duration = (() => {
     let seconds: number
-    if (isTaskRunning(task.status) || task.falRecoverable || task.customRecoverable) {
+    if (isTaskRunning(task.status) || task.customRecoverable) {
       if (task.submittedAt != null) {
         seconds = Math.max(0, Math.floor((now - task.submittedAt) / 1000))
       } else {
@@ -362,9 +362,8 @@ export default function TaskCard({
     return `${mm}:${ss}`
   })()
   const showSwipeAction = swipeActionActive
-  const isFalReconnecting = task.status === 'error' && task.falRecoverable
   const isCustomReconnecting = task.status === 'error' && task.customRecoverable
-  const showRunningTimer = isTaskRunning(task.status) || isFalReconnecting || isCustomReconnecting
+  const showRunningTimer = isTaskRunning(task.status) || isCustomReconnecting
   const isWorkerLikeRunning = isTaskRunning(task.status)
   const showLegacyStreamPreview = task.status === 'running' && streamPreviewSrc
   const showGeneratingPlaceholder =
@@ -395,10 +394,7 @@ export default function TaskCard({
     canManualSyncTask(task.status) ||
     (
       !isTaskDone(task.status) &&
-      (
-        Boolean(task.falRequestId && task.falEndpoint) ||
-        Boolean(task.customTaskId)
-      )
+      Boolean(task.customTaskId)
     )
   const hasRemoteOutputImages = [
     ...(task.outputImages ?? []),
@@ -601,7 +597,7 @@ export default function TaskCard({
               </div>
             </div>
           )}
-          {task.status === 'error' && isFalReconnecting && (
+          {task.status === 'error' && isCustomReconnecting && (
             <div className="flex flex-col items-center gap-1 px-2">
               <svg
                 className="w-7 h-7 text-yellow-400 animate-pulse"
@@ -621,7 +617,7 @@ export default function TaskCard({
               </span>
             </div>
           )}
-          {isTaskFailed(task.status) && !isFalReconnecting && (
+          {isTaskFailed(task.status) && (
             <div className="flex flex-col items-center gap-1 px-2">
               <svg
                 className={`w-7 h-7 ${isInterrupted ? 'text-yellow-400' : 'text-red-400'}`}
@@ -895,7 +891,7 @@ export default function TaskCard({
                   </svg>
                 </TaskActionButton>
               )}
-              {((isTaskFailed(task.status) && !isFalReconnecting) || settings.alwaysShowRetryButton) && (
+              {((isTaskFailed(task.status)) || settings.alwaysShowRetryButton) && (
                 <TaskActionButton
                   tooltip="重试任务"
                   onClick={() => {

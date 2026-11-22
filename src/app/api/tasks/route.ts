@@ -35,9 +35,6 @@ function rowToTaskRecord(row: any) {
     apiModel: row.api_model,
     apiProfileSnapshot,
     customProviderSnapshot: parseJson(row.custom_provider_snapshot) || (apiProvider === DRAGONCODE_PROVIDER_ID ? DRAGONCODE_PROVIDER_DEFINITION : undefined),
-    falRequestId: row.fal_request_id,
-    falEndpoint: row.fal_endpoint,
-    falRecoverable: row.fal_recoverable === 1,
     customTaskId: row.custom_task_id,
     customRecoverable: row.custom_recoverable === 1,
     actualParams: parseJson(row.actual_params),
@@ -166,12 +163,12 @@ export async function POST(request: Request) {
       `INSERT INTO playground_tasks (
         id, user_id, prompt, params, api_provider, api_profile_id, api_profile_name,
         api_mode, api_model, api_profile_snapshot, custom_provider_snapshot,
-        fal_request_id, fal_endpoint, fal_recoverable, custom_task_id, custom_recoverable,
+        custom_task_id, custom_recoverable,
         actual_params, actual_params_by_image, revised_prompt_by_image, input_image_ids,
         mask_target_image_id, mask_image_id, output_images, output_images_pending, stream_partial_image_ids,
         raw_image_urls, raw_response_payload, status, error, created_at, finished_at, elapsed,
         is_favorite, group_id, owner_fingerprint, cost
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         prompt = VALUES(prompt),
         params = VALUES(params),
@@ -182,9 +179,6 @@ export async function POST(request: Request) {
         api_model = VALUES(api_model),
         api_profile_snapshot = VALUES(api_profile_snapshot),
         custom_provider_snapshot = VALUES(custom_provider_snapshot),
-        fal_request_id = VALUES(fal_request_id),
-        fal_endpoint = VALUES(fal_endpoint),
-        fal_recoverable = VALUES(fal_recoverable),
         custom_task_id = VALUES(custom_task_id),
         custom_recoverable = VALUES(custom_recoverable),
         actual_params = VALUES(actual_params),
@@ -218,9 +212,6 @@ export async function POST(request: Request) {
         task.apiModel || null,
         task.apiProfileSnapshot ? JSON.stringify(task.apiProfileSnapshot) : null,
         task.customProviderSnapshot ? JSON.stringify(task.customProviderSnapshot) : null,
-        task.falRequestId || null,
-        task.falEndpoint || null,
-        task.falRecoverable ? 1 : 0,
         task.customTaskId || null,
         task.customRecoverable ? 1 : 0,
         task.actualParams ? JSON.stringify(task.actualParams) : null,

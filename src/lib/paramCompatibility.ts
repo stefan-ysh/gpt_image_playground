@@ -1,10 +1,8 @@
 import { DEFAULT_PARAMS, type AppSettings, type TaskParams } from '../types'
-import { getActiveApiProfile, DRAGONCODE_PROVIDER_ID, isFreegenProfile } from './apiProfiles'
+import { getActiveApiProfile, DRAGONCODE_PROVIDER_ID } from './apiProfiles'
 import { normalizeResolution } from './resolution'
 import { normalizeImageSize, isSupported4KRatio } from './size'
 
-export const DEFAULT_FAL_IMAGE_SIZE = '1360x1024'
-export const MAX_FAL_OUTPUT_IMAGES = 4
 export const MAX_OPENAI_OUTPUT_IMAGES = 10
 
 export function normalizeParamsForSettings(
@@ -24,19 +22,6 @@ export function normalizeParamsForSettings(
     if (nextParams.resolution === '4k' && !isSupported4KRatio(nextParams.size)) {
       nextParams.resolution = '2k'
     }
-  }
-
-  if (activeProfile.provider === 'fal') {
-    if (!options.hasInputImages && nextParams.size === 'auto') nextParams.size = DEFAULT_FAL_IMAGE_SIZE
-    nextParams.moderation = DEFAULT_PARAMS.moderation
-    nextParams.output_compression = DEFAULT_PARAMS.output_compression
-  }
-
-  if (isFreegenProfile(activeProfile)) {
-    if (nextParams.size === 'auto') nextParams.size = '1:1'
-    nextParams.n = 1
-    nextParams.moderation = DEFAULT_PARAMS.moderation
-    nextParams.output_compression = DEFAULT_PARAMS.output_compression
   }
 
   if (nextParams.output_format === 'png') {

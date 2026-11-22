@@ -39,9 +39,6 @@ function rowToTask(row: RowDataPacket): TaskRecord {
     apiProfileSnapshot: safeJsonParse(row.api_profile_snapshot, undefined),
     customProviderSnapshot: safeJsonParse(row.custom_provider_snapshot, undefined),
 
-    falRequestId: row.fal_request_id ?? undefined,
-    falEndpoint: row.fal_endpoint ?? undefined,
-    falRecoverable: Boolean(row.fal_recoverable),
     customTaskId: row.custom_task_id ?? undefined,
     customRecoverable: Boolean(row.custom_recoverable),
 

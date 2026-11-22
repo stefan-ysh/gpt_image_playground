@@ -320,14 +320,13 @@ export default function SettingsModal() {
   const activeProviderIsOpenAICompatible = isOpenAICompatibleProvider(draft, activeProfile.provider)
   const apiProxyChecked = activeProviderIsOpenAICompatible && (apiProxyLocked || activeProfile.apiProxy)
   const apiProxyEnabled = apiProxyAvailable && activeProviderIsOpenAICompatible && apiProxyChecked
-  const activeProviderUsesApiUrl = activeProviderIsOpenAICompatible || activeProfile.provider === 'fal'
+  const activeProviderUsesApiUrl = activeProviderIsOpenAICompatible
   const activeCustomProvider = draft.customProviders.find((provider) => provider.id === activeProfile.provider)
-  const defaultProviderOrder = ['openai', 'fal', ...draft.customProviders.map(p => p.id)]
+  const defaultProviderOrder = ['openai', ...draft.customProviders.map(p => p.id)]
   const providerOrder = draft.providerOrder || defaultProviderOrder
 
   const unorderedProviderOptions = [
     { label: 'OpenAI 兼容接口', value: 'openai', draggable: true },
-    { label: 'fal.ai', value: 'fal', draggable: true },
     ...draft.customProviders.map((provider) => ({
       label: provider.name,
       value: provider.id,
@@ -785,7 +784,7 @@ export default function SettingsModal() {
   }
 
   const handleProviderReorder = (sourceValue: string | number, targetValue: string | number, position: 'before' | 'after' | null) => {
-    const currentOrder = draft.providerOrder || ['openai', 'fal', ...draft.customProviders.map(p => p.id)]
+    const currentOrder = draft.providerOrder || ['openai', ...draft.customProviders.map(p => p.id)]
     const sourceIndex = currentOrder.indexOf(String(sourceValue))
     const targetIndex = currentOrder.indexOf(String(targetValue))
     if (sourceIndex < 0 || targetIndex < 0) return

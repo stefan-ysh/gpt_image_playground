@@ -28,16 +28,10 @@ const DEFAULT_OPENAI_API_PROXY =
   ) === 'true'
 export const DEFAULT_IMAGES_MODEL = 'gpt-image-2'
 export const DEFAULT_RESPONSES_MODEL = 'gpt-5.5'
-export const DEFAULT_FAL_BASE_URL = 'https://fal.run'
-export const DEFAULT_FAL_MODEL = 'openai/gpt-image-2'
 export const DEFAULT_OPENAI_PROFILE_ID = 'default-openai'
 export const DEFAULT_API_TIMEOUT = 600
 
 export const DRAGONCODE_PROVIDER_ID = 'custom-dragoncode-gpt-image-2'
-export const FREEGEN_PROVIDER_ID = 'freegen-z-image'
-export const FREEGEN_MODEL = 'z-image'
-export const FREEGEN_BASE_URL = 'https://freegen.app'
-export const FREEGEN_INTERNAL_API_KEY = 'internal-freegen'
 
 export function getDefaultApiKey(): string {
   return readRuntimeEnv(process.env.NEXT_PUBLIC_DEFAULT_API_KEY || '')
@@ -341,27 +335,6 @@ export function createDefaultDragonCodeProfile(overrides: Partial<ApiProfile> = 
   }
 }
 
-export function createDefaultFreegenProfile(overrides: Partial<ApiProfile> = {}): ApiProfile {
-  return {
-    id: 'freegen-z-image',
-    name: 'z-image',
-    provider: FREEGEN_PROVIDER_ID,
-    baseUrl: FREEGEN_BASE_URL,
-    model: FREEGEN_MODEL,
-    timeout: DEFAULT_API_TIMEOUT,
-    apiMode: 'images',
-    apiProxy: false,
-    streamImages: false,
-    streamPartialImages: 0,
-    apiKey: FREEGEN_INTERNAL_API_KEY,
-    ...overrides,
-  }
-}
-
-export function isFreegenProfile(profile: Pick<ApiProfile, 'provider' | 'model'> | null | undefined): boolean {
-  return profile?.provider === FREEGEN_PROVIDER_ID || profile?.model === FREEGEN_MODEL
-}
-
 export function switchApiProfileProvider(profile: ApiProfile, provider: ApiProvider, customProvider?: CustomProviderDefinition): ApiProfile {
   if (customProvider) {
     const isDragonCode = customProvider.id === DRAGONCODE_PROVIDER_ID
@@ -392,25 +365,6 @@ export function normalizeApiProfile(input: unknown, fallback?: Partial<ApiProfil
   const rawProvider = typeof record.provider === 'string' ? record.provider : ''
   const inputBaseUrl = typeof record.baseUrl === 'string' ? record.baseUrl : (fallback?.baseUrl ?? '')
   const inputModel = typeof record.model === 'string' ? record.model.trim() : ''
-  const isFreegen = rawProvider === FREEGEN_PROVIDER_ID || inputModel === FREEGEN_MODEL
-  if (isFreegen) {
-    const defaults = createDefaultFreegenProfile(fallback)
-    return {
-      ...defaults,
-      id: typeof record.id === 'string' && record.id.trim() ? record.id : defaults.id,
-      name: typeof record.name === 'string' && record.name.trim() ? record.name : defaults.name,
-      provider: FREEGEN_PROVIDER_ID,
-      baseUrl: FREEGEN_BASE_URL,
-      apiKey: FREEGEN_INTERNAL_API_KEY,
-      model: FREEGEN_MODEL,
-      timeout: typeof record.timeout === 'number' && Number.isFinite(record.timeout) ? record.timeout : defaults.timeout,
-      apiMode: 'images',
-      apiProxy: false,
-      streamImages: false,
-      streamPartialImages: 0,
-      providerDrafts: isRecord(record.providerDrafts) ? record.providerDrafts as ApiProfile['providerDrafts'] : defaults.providerDrafts,
-    }
-  }
   const isDragonCode = inputBaseUrl.toLowerCase().includes('dragoncode.codes/gpt-image') || rawProvider === DRAGONCODE_PROVIDER_ID
 
   const provider: ApiProvider = isDragonCode ? DRAGONCODE_PROVIDER_ID : (rawProvider || DRAGONCODE_PROVIDER_ID)
@@ -491,13 +445,11 @@ export function normalizeSettings(input: Partial<AppSettings> | unknown): AppSet
     syncedProfiles.push(createDefaultDragonCodeProfile())
   }
 
-  const freegenIndex = syncedProfiles.findIndex((p) => isFreegenProfile(p))
-  if (freegenIndex >= 0) {
-    syncedProfiles[freegenIndex] = createDefaultFreegenProfile({
-      id: syncedProfiles[freegenIndex].id,
-      name: syncedProfiles[freegenIndex].name || 'z-image',
-      timeout: syncedProfiles[freegenIndex].timeout,
-    })
+  // 旧版 z-image (freegen) 服务已下线，清理遗留 Profile，避免残留失效配置
+  for (let i = syncedProfiles.length - 1; i >= 0; i--) {
+    if (syncedProfiles[i].provider === 'freegen-z-image' || syncedProfiles[i].model === 'z-image') {
+      syncedProfiles.splice(i, 1)
+    }
   }
 
   const activeProfileId = typeof record.activeProfileId === 'string' && syncedProfiles.some((p) => p.id === record.activeProfileId)
@@ -534,7 +486,6 @@ export function getCustomProviderDefinition(settings: Partial<AppSettings> | unk
 }
 
 export function getApiProviderLabel(settings: Partial<AppSettings> | unknown, provider: ApiProvider): string {
-  if (provider === 'fal') return 'fal.ai'
   if (provider === 'openai') return 'OpenAI'
   return getCustomProviderDefinition(settings, provider)?.name ?? provider
 }
@@ -610,20 +561,19 @@ export function getActiveApiProfile(settings: Partial<AppSettings> | unknown): A
 
   return {
     ...profile,
-    baseUrl: isFreegenProfile(profile) ? FREEGEN_BASE_URL : typeof record.baseUrl === 'string' ? record.baseUrl : profile.baseUrl,
-    apiKey: isFreegenProfile(profile) ? FREEGEN_INTERNAL_API_KEY : profile.apiKey,
-    model: isFreegenProfile(profile) ? FREEGEN_MODEL : typeof record.model === 'string' && record.model.trim() ? record.model : profile.model,
+    baseUrl: typeof record.baseUrl === 'string' ? record.baseUrl : profile.baseUrl,
+    apiKey: profile.apiKey,
+    model: typeof record.model === 'string' && record.model.trim() ? record.model : profile.model,
     timeout: typeof record.timeout === 'number' && Number.isFinite(record.timeout) ? record.timeout : profile.timeout,
     apiMode: 'images',
-    apiProxy: isFreegenProfile(profile) ? false : typeof record.apiProxy === 'boolean' ? record.apiProxy : profile.apiProxy,
-    streamImages: isFreegenProfile(profile) ? false : typeof record.streamImages === 'boolean' ? record.streamImages : profile.streamImages,
-    streamPartialImages: isFreegenProfile(profile) ? 0 : normalizeStreamPartialImages(record.streamPartialImages, profile.streamPartialImages),
+    apiProxy: typeof record.apiProxy === 'boolean' ? record.apiProxy : profile.apiProxy,
+    streamImages: typeof record.streamImages === 'boolean' ? record.streamImages : profile.streamImages,
+    streamPartialImages: normalizeStreamPartialImages(record.streamPartialImages, profile.streamPartialImages),
   }
 }
 
 export function validateApiProfile(profile: ApiProfile): string | null {
   if (!profile.name.trim()) return '缺少名称'
-  if (isFreegenProfile(profile)) return null
   if (!profile.baseUrl.trim()) return '缺少 API URL'
   if (!profile.apiKey.trim()) return '缺少环境变量 NEXT_PUBLIC_DEFAULT_API_KEY'
   if (!profile.model.trim()) return '缺少模型 ID'

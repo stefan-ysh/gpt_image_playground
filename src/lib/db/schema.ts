@@ -89,9 +89,6 @@ export async function ensurePlaygroundSchema() {
       api_model VARCHAR(255),
       api_profile_snapshot LONGTEXT,
       custom_provider_snapshot LONGTEXT,
-      fal_request_id VARCHAR(255),
-      fal_endpoint VARCHAR(255),
-      fal_recoverable TINYINT(1) DEFAULT 0,
       custom_task_id VARCHAR(255),
       custom_recoverable TINYINT(1) DEFAULT 0,
       actual_params TEXT,
@@ -241,9 +238,6 @@ export async function ensurePlaygroundSchema() {
   await addTaskColumn("api_mode VARCHAR(50)");
   await addTaskColumn("api_profile_snapshot LONGTEXT");
   await addTaskColumn("custom_provider_snapshot LONGTEXT");
-  await addTaskColumn("fal_request_id VARCHAR(255)");
-  await addTaskColumn("fal_endpoint VARCHAR(255)");
-  await addTaskColumn("fal_recoverable TINYINT(1) DEFAULT 0");
   await addTaskColumn("owner_fingerprint VARCHAR(255)");
   await addTaskColumn("raw_response_payload LONGTEXT");
   await addTaskColumn("cost DOUBLE DEFAULT NULL");
