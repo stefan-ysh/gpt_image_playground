@@ -84,7 +84,7 @@ async function main() {
         try {
           await conn.execute(
             'INSERT INTO playground_users (id, email, display_name, role, status, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [randomUUID(), normalized, displayName || null, 'member', 'active', hashPassword(finalPassword), Date.now()],
+            [randomUUID(), normalized, displayName || null, 'member', 'active', hashPassword(finalPassword), new Date()],
           );
           console.log(`✅ 用户已创建: ${normalized}${displayName ? ` (${displayName})` : ''}`);
           if (!password) console.log(`初始密码: ${finalPassword}`);
@@ -120,6 +120,19 @@ async function main() {
         );
         if (result.affectedRows === 0) return fail(`用户不存在: ${oldEmail}`);
         console.log(`✅ 邮箱已更新: ${oldEmail} → ${newEmail}`);
+        break;
+      }
+
+      case 'set-admin': {
+        const [email, flag] = args;
+        if (!email) return fail('用法: set-admin <email> [on|off]');
+        const value = flag === 'off' ? 0 : 1;
+        const [result] = await conn.execute(
+          'UPDATE playground_users SET is_admin = ?, status = CASE WHEN ? = 1 THEN status ELSE status END WHERE email = ?',
+          [value, value, email.trim().toLowerCase()],
+        );
+        if (result.affectedRows === 0) return fail(`用户不存在: ${email}`);
+        console.log(`✅ ${email} 超级管理员: ${value ? '开' : '关'}`);
         break;
       }
 
@@ -177,7 +190,8 @@ function printUsage() {
   node scripts/manage-user.mjs set-email <旧邮箱> <新邮箱>
   node scripts/manage-user.mjs list [关键词]
   node scripts/manage-user.mjs disable <email>
-  node scripts/manage-user.mjs enable <email>`);
+  node scripts/manage-user.mjs enable <email>
+  node scripts/manage-user.mjs set-admin <email> [on|off]`);
 }
 
 main().catch((err) => {

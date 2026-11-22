@@ -3,7 +3,7 @@ import { collectTaskRowImageRefs, getTaskImageIdHash } from './task-images';
 
 let initialized = false;
 let initPromise: Promise<void> | null = null;
-const SCHEMA_VERSION = '2026-11-22-2';
+const SCHEMA_VERSION = '2026-11-22-3';
 const ID_SQL = 'VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin';
 const USER_ID_SQL = 'CHAR(36) CHARACTER SET ascii COLLATE ascii_bin';
 const HASH_SQL = 'CHAR(64) CHARACTER SET ascii COLLATE ascii_bin';
@@ -59,9 +59,13 @@ async function runSchemaInit() {
       display_name VARCHAR(255) NULL,
       role ${ROLE_SQL} NOT NULL DEFAULT 'member',
       status VARCHAR(32) NOT NULL DEFAULT 'active',
+      is_admin TINYINT(1) NOT NULL DEFAULT 0,
       password_hash VARCHAR(255) NULL,
-      created_at BIGINT NOT NULL,
-      last_login_at BIGINT NULL,
+      login_count INT NOT NULL DEFAULT 0,
+      last_login_ip VARCHAR(64) NULL,
+      last_login_ua VARCHAR(255) NULL,
+      created_at DATETIME NULL,
+      last_login_at DATETIME NULL,
       UNIQUE KEY uk_playground_users_email (email)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC;
   `);
@@ -70,9 +74,10 @@ async function runSchemaInit() {
     CREATE TABLE IF NOT EXISTS playground_auth_sessions (
       session_token CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL PRIMARY KEY,
       user_id ${USER_ID_SQL} NOT NULL,
-      expires_at BIGINT NOT NULL,
-      created_at BIGINT NOT NULL,
+      expires_at DATETIME NOT NULL,
+      created_at DATETIME NOT NULL,
       user_agent VARCHAR(255) NULL,
+      login_ip VARCHAR(64) NULL,
       INDEX idx_playground_auth_sessions_user (user_id),
       CONSTRAINT fk_playground_auth_sessions_user FOREIGN KEY (user_id) REFERENCES playground_users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC;
@@ -211,13 +216,53 @@ async function runSchemaInit() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC;
   `);
 
+  // 5.65 用户表时间列 BIGINT → DATETIME（便于人工在数据库里直接查看日期），
+  //      并补充管理员/登录统计字段
+  const [userCreatedAtCol] = await pool.query<any[]>(
+    `SELECT DATA_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'playground_users' AND COLUMN_NAME = 'created_at'`
+  );
+  if ((userCreatedAtCol[0]?.DATA_TYPE || '').toLowerCase() === 'bigint') {
+    const userTimeMigrations: Array<[string, string, string]> = [
+      ['playground_users', 'created_at', 'last_login_at'],
+      ['playground_auth_sessions', 'expires_at', 'created_at'],
+    ];
+    for (const [table, ...cols] of userTimeMigrations) {
+      for (const col of cols) {
+        try {
+          await pool.query(`ALTER TABLE ${table} ADD COLUMN ${col}_dt DATETIME NULL`);
+          await pool.query(`UPDATE ${table} SET ${col}_dt = FROM_UNIXTIME(${col}/1000) WHERE ${col} IS NOT NULL AND ${col} > 0`);
+          await pool.query(`ALTER TABLE ${table} DROP COLUMN ${col}`);
+          await pool.query(`ALTER TABLE ${table} CHANGE ${col}_dt ${col} DATETIME NULL`);
+        } catch (e: any) {
+          console.warn(`Failed to migrate ${table}.${col} to DATETIME:`, e?.message);
+        }
+      }
+    }
+    for (const colSql of [
+      'ADD COLUMN is_admin TINYINT(1) NOT NULL DEFAULT 0',
+      'ADD COLUMN login_count INT NOT NULL DEFAULT 0',
+      'ADD COLUMN last_login_ip VARCHAR(64) NULL',
+      'ADD COLUMN last_login_ua VARCHAR(255) NULL',
+      'ALTER TABLE playground_auth_sessions ADD COLUMN login_ip VARCHAR(64) NULL',
+    ]) {
+      try {
+        await pool.query(`ALTER TABLE playground_users ${colSql}`);
+      } catch (e: any) {
+        if (e?.code !== 'ER_DUP_FIELDNAME' && e?.errno !== 1060) {
+          console.warn('Failed to add user column:', e?.message);
+        }
+      }
+    }
+  }
+
   // 5.7 回填存量用户（必须在迁移外键之前，MySQL 添加外键时会校验存量行）：现有任务/图片归属的 user_id 全部建档（无密码，占位邮箱，可由 CLI 脚本补全）
   try {
     await pool.query(`
       INSERT IGNORE INTO playground_users (id, email, display_name, role, status, created_at)
       SELECT DISTINCT user_id,
              CONCAT('legacy+', LOWER(user_id), '@users.local'),
-             NULL, 'member', 'active', ?
+             NULL, 'member', 'active', NOW()
       FROM (
         SELECT user_id FROM playground_tasks
         UNION
@@ -228,7 +273,7 @@ async function runSchemaInit() {
         SELECT user_id FROM playground_pending_image_transfers
       ) AS all_user_ids
       WHERE user_id IS NOT NULL
-    `, [Date.now()]);
+    `);
   } catch (e: any) {
     console.warn('Failed to backfill playground_users:', e?.message);
   }

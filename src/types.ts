@@ -380,4 +380,5 @@ export interface UserInfo {
   email: string
   displayName: string | null
   role: string
+  isAdmin?: boolean;
 }

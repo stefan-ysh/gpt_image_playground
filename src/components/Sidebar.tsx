@@ -24,6 +24,12 @@ export default function Sidebar() {
   const setShowSettings = useStore((s) => s.setShowSettings)
   const setConfirmDialog = useStore((s) => s.setConfirmDialog)
   const currentUser = useStore((s) => s.currentUser)
+  const showToast = useStore((s) => s.showToast)
+
+  // 用户区操作状态
+  const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [changingPassword, setChangingPassword] = useState(false)
 
   // GroupDialog 弹窗控制状态
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false)
@@ -217,8 +223,104 @@ export default function Sidebar() {
               </div>
             </div>
           )}
+
+          {currentUser && (
+            <div className="flex flex-col gap-1 bg-white/[0.58] px-3 pb-3 pt-1 dark:bg-white/[0.025]">
+              {currentUser.isAdmin && (
+                <a
+                  href="/admin/users"
+                  onClick={() => setSidebarOpen(false)}
+                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/[0.06]"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                  用户管理
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => { setShowPasswordModal(true); setNewPassword('') }}
+                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/[0.06]"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 2a8 8 0 11-16 0 8 8 0 0116 0zm-10 4h4m-2-4v8" />
+                </svg>
+                修改密码
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }) } catch {}
+                  window.location.href = '/signin'
+                }}
+                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/[0.06]"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                退出登录
+              </button>
+            </div>
+          )}
         </div>
       </aside>
+
+      {/* 修改密码弹窗 */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={() => setShowPasswordModal(false)}>
+          <div
+            className="w-full max-w-sm rounded-2xl border border-gray-100 bg-white p-6 shadow-xl dark:border-gray-800 dark:bg-gray-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">修改密码</h3>
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">为当前账号 {currentUser?.email} 设置新密码（至少 8 位）。</p>
+            <input
+              type="text"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="输入新密码"
+              className="mt-4 h-10 w-full rounded-xl border border-gray-200 px-3 text-sm outline-none focus:border-blue-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowPasswordModal(false)}
+                className="rounded-xl px-4 py-2 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={changingPassword || newPassword.length < 8}
+                onClick={async () => {
+                  setChangingPassword(true)
+                  try {
+                    const res = await fetch('/api/auth/password', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include',
+                      body: JSON.stringify({ newPassword }),
+                    })
+                    const json = await res.json().catch(() => null)
+                    if (json?.success) {
+                      showToast('密码修改成功', 'success')
+                      setShowPasswordModal(false)
+                    } else {
+                      showToast(json?.error || '修改失败', 'error')
+                    }
+                  } finally {
+                    setChangingPassword(false)
+                  }
+                }}
+                className="rounded-xl bg-blue-500 px-4 py-2 text-xs font-medium text-white hover:bg-blue-600 disabled:opacity-40"
+              >
+                确认修改
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 分组操作的弹窗组件 */}
       <GroupDialog

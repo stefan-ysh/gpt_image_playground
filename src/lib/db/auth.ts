@@ -8,6 +8,7 @@ export type CurrentUser = {
   email: string;
   displayName: string | null;
   role: string;
+  isAdmin: boolean;
 };
 
 /** 本地会话 cookie：本项目自建认证，不再依赖 admin/ERP 的 finance_session */
@@ -43,16 +44,21 @@ async function setSessionCookie(token: string) {
 }
 
 /** 签发本地会话：登录成功后调用，写入会话表并下发 httpOnly cookie */
-export async function issueLocalSession(userId: string, userAgent: string | null): Promise<string> {
+export async function issueLocalSession(
+  userId: string,
+  userAgent: string | null,
+  loginIp: string | null = null,
+): Promise<string> {
   const pool = await mysqlPool();
   const token = randomBytes(32).toString('hex');
-  const now = Date.now();
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + SESSION_TTL_MS);
   await pool.query(
-    'INSERT INTO playground_auth_sessions (session_token, user_id, expires_at, created_at, user_agent) VALUES (?, ?, ?, ?, ?)',
-    [token, userId, now + SESSION_TTL_MS, now, userAgent?.slice(0, 255) ?? null]
+    'INSERT INTO playground_auth_sessions (session_token, user_id, expires_at, created_at, user_agent, login_ip) VALUES (?, ?, ?, ?, ?, ?)',
+    [token, userId, expiresAt, now, userAgent?.slice(0, 255) ?? null, loginIp?.slice(0, 64) ?? null]
   );
   // 顺手清理该用户的过期会话
-  await pool.query('DELETE FROM playground_auth_sessions WHERE user_id = ? AND expires_at < ?', [userId, now]);
+  await pool.query('DELETE FROM playground_auth_sessions WHERE user_id = ? AND expires_at < NOW()', [userId]);
   await setSessionCookie(token);
   return token;
 }
@@ -77,7 +83,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 
   try {
     const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT u.id, u.email, u.display_name, u.status, s.expires_at
+      `SELECT u.id, u.email, u.display_name, u.status, u.is_admin, s.expires_at
        FROM playground_auth_sessions s
        JOIN playground_users u ON u.id = s.user_id
        WHERE s.session_token = ?
@@ -87,7 +93,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 
     if (rows.length === 0) return null;
     const row = rows[0];
-    if (Number(row.expires_at) < Date.now()) return null;
+    if (new Date(row.expires_at).getTime() < Date.now()) return null;
     if (row.status !== 'active') return null;
 
     return {
@@ -95,6 +101,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       email: row.email,
       displayName: row.display_name,
       role: 'member',
+      isAdmin: Boolean(Number(row.is_admin)),
     };
   } catch (error) {
     console.error('获取当前用户失败:', error);
@@ -106,6 +113,15 @@ export async function requireCurrentUser(): Promise<CurrentUser> {
   const user = await getCurrentUser();
   if (!user) {
     throw new Error('UNAUTHENTICATED');
+  }
+  return user;
+}
+
+/** 管理接口守卫：非超级管理员返回 FORBIDDEN（handleApiError → 403） */
+export async function requireAdminUser(): Promise<CurrentUser> {
+  const user = await requireCurrentUser();
+  if (!user.isAdmin) {
+    throw new Error('FORBIDDEN');
   }
   return user;
 }
