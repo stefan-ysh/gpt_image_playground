@@ -34,6 +34,7 @@ interface TaskView {
   createdAt: string
   finishedAt: string | null
   error: string | null
+  deletedAt: string | null
   cost: number
   billed: boolean
   billedResolution: string | null
@@ -458,6 +459,11 @@ export default function AdminUsersPage() {
                           }`}>
                             {task.status === 'done' ? '完成' : task.status === 'provider_failed' ? '失败' : task.status === 'submit_unknown' ? '提交未知' : task.status === 'running' ? '生成中' : task.status}
                           </span>
+                          {task.deletedAt && (
+                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                              用户已删除
+                            </span>
+                          )}
                           {task.billed && (
                             <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
                               计费 {currency}{task.cost.toFixed(2)}（{task.billedResolution}）

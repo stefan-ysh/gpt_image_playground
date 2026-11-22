@@ -3,7 +3,7 @@ import { collectTaskRowImageRefs, getTaskImageIdHash } from './task-images';
 
 let initialized = false;
 let initPromise: Promise<void> | null = null;
-const SCHEMA_VERSION = '2026-11-22-3';
+const SCHEMA_VERSION = '2026-11-22-4';
 const ID_SQL = 'VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin';
 const USER_ID_SQL = 'CHAR(36) CHARACTER SET ascii COLLATE ascii_bin';
 const HASH_SQL = 'CHAR(64) CHARACTER SET ascii COLLATE ascii_bin';
@@ -168,6 +168,7 @@ async function runSchemaInit() {
       group_id ${ID_SQL},
       owner_fingerprint VARCHAR(255),
       cost DOUBLE DEFAULT NULL,
+      deleted_at DATETIME NULL,
       CONSTRAINT fk_playground_tasks_user FOREIGN KEY (user_id) REFERENCES playground_users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 ROW_FORMAT=DYNAMIC;`;
   await pool.query(tasksSql);
@@ -357,6 +358,7 @@ async function runSchemaInit() {
   await addTaskColumn("last_provider_error TEXT");
   await addTaskColumn("idempotency_key VARCHAR(255)");
   await addTaskColumn("provider_result_raw LONGTEXT");
+  await addTaskColumn("deleted_at DATETIME NULL");
   await addTaskColumn("copied_from_task_id VARCHAR(128)");
   await dropTaskColumn("quota_date");
   await dropTaskColumn("quota_reserved_cost");

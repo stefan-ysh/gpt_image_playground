@@ -63,6 +63,9 @@ export async function pickRunnableTasks(limit = 5) {
         AND next_poll_at IS NOT NULL
       )
     )
+    -- 用户已删除的任务：未提交的直接跳过（不会产生扣费）；
+    -- 已提交到服务商的继续跑完（服务商仍会计费，需保留记录供花费统计）
+    AND (deleted_at IS NULL OR provider_task_id IS NOT NULL)
     AND (
       next_poll_at IS NULL
       OR next_poll_at <= ?

@@ -44,7 +44,7 @@ export async function GET(
     const pool = await mysqlPool();
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT id, prompt, status, api_provider, api_model, params, actual_params,
-              output_images, input_image_ids, error, created_at, finished_at, cost
+              output_images, input_image_ids, error, created_at, finished_at, cost, deleted_at
        FROM playground_tasks
        WHERE user_id = ?
        ORDER BY created_at DESC
@@ -91,6 +91,7 @@ export async function GET(
         createdAt: row.created_at,
         finishedAt: row.finished_at,
         error: typeof row.error === 'string' && row.error ? row.error.slice(0, 300) : null,
+        deletedAt: row.deleted_at ?? null,
         cost: billable ? getUnitPrice(taskResolution) : 0,
         billed: billable,
         billedResolution: taskResolution,

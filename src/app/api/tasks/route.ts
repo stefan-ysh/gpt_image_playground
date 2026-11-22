@@ -75,7 +75,7 @@ export async function GET(request: Request) {
     const limit = Math.max(1, Math.min(100, limitVal));
     const offset = (page - 1) * limit;
 
-    let query = `SELECT * FROM playground_tasks WHERE user_id = ?`;
+    let query = `SELECT * FROM playground_tasks WHERE user_id = ? AND deleted_at IS NULL`;
     const params: any[] = [user.id];
 
     if (groupId) {
@@ -137,7 +137,7 @@ export async function POST(request: Request) {
     await conn.beginTransaction();
 
     const [existingRows] = await conn.query<RowDataPacket[]>(
-      `SELECT id
+      `SELECT id, deleted_at
        FROM playground_tasks
        WHERE id = ? AND user_id = ?
        LIMIT 1
@@ -145,6 +145,12 @@ export async function POST(request: Request) {
       [task.id, user.id]
     );
     const existingTask = existingRows[0];
+
+    // 已软删的任务：不回写、不复活（保留行用于花费统计与超管审计）
+    if (existingTask?.deleted_at) {
+      await conn.commit();
+      return NextResponse.json({ success: true, data: { ignored: true } });
+    }
 
     if (
       !existingTask &&

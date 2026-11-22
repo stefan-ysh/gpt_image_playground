@@ -146,8 +146,9 @@ export async function DELETE(
     const taskId = params.id
 
     const pool = await mysqlPool()
+    // 逻辑删除：仅对用户隐藏，行保留用于花费统计与超管审计
     const [result] = await pool.query<ResultSetHeader>(
-      'DELETE FROM playground_tasks WHERE id = ? AND user_id = ?',
+      'UPDATE playground_tasks SET deleted_at = NOW() WHERE id = ? AND user_id = ? AND deleted_at IS NULL',
       [taskId, user.id],
     )
 
