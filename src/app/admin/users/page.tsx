@@ -72,6 +72,7 @@ export default function AdminUsersPage() {
   const [tasksTarget, setTasksTarget] = useState<AdminUser | null>(null)
   const [userTasks, setUserTasks] = useState<TaskView[]>([])
   const [tasksLoading, setTasksLoading] = useState(false)
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const setConfirmDialog = useStore((s) => s.setConfirmDialog)
   const showToast = useStore((s) => s.showToast)
@@ -296,10 +297,10 @@ export default function AdminUsersPage() {
         )}
 
         <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white dark:border-gray-800 dark:bg-gray-900">
-          <table className="w-full min-w-[900px] text-left text-xs">
-            <thead className="bg-gray-50 text-gray-400 dark:bg-gray-800/60 dark:text-gray-500">
+          <table className="w-full min-w-[1080px] text-left text-xs">
+            <thead className="bg-gray-50 whitespace-nowrap text-gray-400 dark:bg-gray-800/60 dark:text-gray-500">
               <tr>
-                <th className="px-4 py-3 font-medium">用户</th>
+                <th className="min-w-[240px] px-4 py-3 font-medium">用户</th>
                 <th className="px-3 py-3 font-medium">状态</th>
                 <th className="px-3 py-3 font-medium">任务</th>
                 <th className="px-3 py-3 font-medium">今日用量</th>
@@ -307,7 +308,7 @@ export default function AdminUsersPage() {
                 <th className="px-3 py-3 font-medium">花费（今日/累计）</th>
                 <th className="px-3 py-3 font-medium">登录</th>
                 <th className="px-3 py-3 font-medium">最近登录</th>
-                <th className="px-3 py-3 font-medium">操作</th>
+                <th className="w-[150px] px-3 py-3 font-medium">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-gray-800/60">
@@ -319,19 +320,19 @@ export default function AdminUsersPage() {
               )}
               {users.map((user) => (
                 <tr key={user.id} className="text-gray-700 dark:text-gray-200">
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 align-middle">
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{user.email}</span>
                       {user.isAdmin && (
-                        <span className="rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-600 dark:bg-purple-500/10 dark:text-purple-300">
+                        <span className="whitespace-nowrap rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-medium text-purple-600 dark:bg-purple-500/10 dark:text-purple-300">
                           超管
                         </span>
                       )}
                     </div>
                     {user.displayName && <div className="mt-0.5 text-[11px] text-gray-400">{user.displayName}</div>}
                   </td>
-                  <td className="px-3 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                  <td className="whitespace-nowrap px-3 py-3 align-middle">
+                    <span className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-medium ${
                       user.status === 'active'
                         ? 'bg-green-50 text-green-600 dark:bg-green-500/10 dark:text-green-400'
                         : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
@@ -339,71 +340,86 @@ export default function AdminUsersPage() {
                       {user.status === 'active' ? '正常' : '已禁用'}
                     </span>
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="whitespace-nowrap px-3 py-3 align-middle">
                     {user.doneCount}/{user.taskCount}
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="whitespace-nowrap px-3 py-3 align-middle">
                     <span className={user.usedToday > 0 ? 'font-semibold text-blue-600 dark:text-blue-400' : ''}>
                       {user.usedToday}
                     </span>
                   </td>
-                  <td className="px-3 py-3">{user.imageCount}</td>
-                  <td className="px-3 py-3">
+                  <td className="whitespace-nowrap px-3 py-3 align-middle">{user.imageCount}</td>
+                  <td className="whitespace-nowrap px-3 py-3 align-middle">
                     <span className={user.costToday > 0 ? 'font-semibold text-blue-600 dark:text-blue-400' : 'text-gray-400'}>
                       {currency}{user.costToday.toFixed(2)}
                     </span>
                     <span className="text-gray-300 dark:text-gray-600"> / </span>
                     <span>{currency}{user.costTotal.toFixed(2)}</span>
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="whitespace-nowrap px-3 py-3 align-middle">
                     {user.loginCount} 次{user.activeSessions > 0 && <span className="ml-1 text-[10px] text-blue-500">· {user.activeSessions} 会话</span>}
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="whitespace-nowrap px-3 py-3 align-middle">
                     <div>{fmtDate(user.lastLoginAt)}</div>
                     <div className="mt-0.5 font-mono text-[10px] text-gray-400">{user.lastLoginIp || '—'}</div>
                   </td>
-                  <td className="px-3 py-3">
-                    <div className="flex flex-wrap gap-1.5">
-                      <button
-                        type="button"
-                        disabled={busyId === user.id}
-                        onClick={() => patchStatus(user, user.status === 'active' ? 'disabled' : 'active')}
-                        className="rounded-lg border border-gray-200 px-2 py-1 text-[11px] text-gray-600 transition hover:bg-gray-100 disabled:opacity-40 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-                      >
-                        {user.status === 'active' ? '禁用' : '启用'}
-                      </button>
+                  <td className="whitespace-nowrap px-3 py-3 align-middle">
+                    <div className="flex items-center gap-1.5">
                       <button
                         type="button"
                         disabled={busyId === user.id}
                         onClick={() => void openTasks(user)}
-                        className="rounded-lg border border-blue-200 px-2 py-1 text-[11px] text-blue-600 transition hover:bg-blue-50 disabled:opacity-40 dark:border-blue-500/20 dark:text-blue-400 dark:hover:bg-blue-500/10"
+                        className="whitespace-nowrap rounded-lg border border-blue-200 px-2.5 py-1.5 text-[11px] text-blue-600 transition hover:bg-blue-50 disabled:opacity-40 dark:border-blue-500/20 dark:text-blue-400 dark:hover:bg-blue-500/10"
                       >
                         查看任务
                       </button>
                       <button
                         type="button"
                         disabled={busyId === user.id}
-                        onClick={() => { setResetTarget(user); setResetPassword('') }}
-                        className="rounded-lg border border-gray-200 px-2 py-1 text-[11px] text-gray-600 transition hover:bg-gray-100 disabled:opacity-40 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                        onClick={() => patchStatus(user, user.status === 'active' ? 'disabled' : 'active')}
+                        className="whitespace-nowrap rounded-lg border border-gray-200 px-2.5 py-1.5 text-[11px] text-gray-600 transition hover:bg-gray-100 disabled:opacity-40 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
                       >
-                        重置密码
+                        {user.status === 'active' ? '禁用' : '启用'}
                       </button>
-                      <button
-                        type="button"
-                        disabled={busyId === user.id}
-                        onClick={() => revokeSessions(user)}
-                        className="rounded-lg border border-gray-200 px-2 py-1 text-[11px] text-gray-600 transition hover:bg-gray-100 disabled:opacity-40 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-                      >
-                        强制下线
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busyId === user.id}
-                        onClick={() => confirmDelete(user)}
-                        className="rounded-lg border border-red-200 px-2 py-1 text-[11px] text-red-500 transition hover:bg-red-50 disabled:opacity-40 dark:border-red-500/20 dark:hover:bg-red-500/10"
-                      >
-                        删除
-                      </button>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          disabled={busyId === user.id}
+                          onClick={() => setMenuOpenId(menuOpenId === user.id ? null : user.id)}
+                          className="rounded-lg border border-gray-200 px-2 py-1.5 text-[11px] text-gray-500 transition hover:bg-gray-100 disabled:opacity-40 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                          aria-label="更多操作"
+                        >
+                          ▾
+                        </button>
+                        {menuOpenId === user.id && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setMenuOpenId(null)} />
+                            <div className="absolute right-0 top-full z-50 mt-1 w-28 overflow-hidden rounded-xl border border-gray-100 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+                              <button
+                                type="button"
+                                onClick={() => { setMenuOpenId(null); setResetTarget(user); setResetPassword('') }}
+                                className="block w-full px-3 py-2 text-left text-[11px] text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/60"
+                              >
+                                重置密码
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setMenuOpenId(null); revokeSessions(user) }}
+                                className="block w-full px-3 py-2 text-left text-[11px] text-gray-600 transition hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/60"
+                              >
+                                强制下线
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setMenuOpenId(null); confirmDelete(user) }}
+                                className="block w-full px-3 py-2 text-left text-[11px] text-red-500 transition hover:bg-red-50 dark:hover:bg-red-500/10"
+                              >
+                                删除用户
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </td>
                 </tr>
