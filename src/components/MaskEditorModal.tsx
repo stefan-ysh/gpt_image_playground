@@ -504,6 +504,7 @@ export default function MaskEditorModal() {
         requestAnimationFrame(() => resetViewTransform())
       } catch (err) {
         if (!cancelled) {
+          console.error('[MaskEditor] 加载失败:', err)
           showToast(err instanceof Error ? err.message : String(err), 'error')
           setMaskEditorImageId(null)
         }

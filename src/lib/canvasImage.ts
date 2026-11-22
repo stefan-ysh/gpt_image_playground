@@ -4,11 +4,21 @@ export interface ImageDimensions {
 }
 
 export async function loadImage(dataUrl: string): Promise<HTMLImageElement> {
+  // 跨域源（含同路径 302 到 COS 的情形）必须以 CORS 模式加载，否则 canvas 被污染、
+  // 遮罩/缩略图等导出操作会抛 SecurityError。CORS 加载失败时退回普通加载（仅保证显示）。
+  const needsCors = !/^(data:|blob:)/i.test(dataUrl)
   return new Promise((resolve, reject) => {
-    const image = new Image()
-    image.onload = () => resolve(image)
-    image.onerror = () => reject(new Error('图片加载失败'))
-    image.src = dataUrl
+    const attempt = (withCors: boolean) => {
+      const image = new Image()
+      if (withCors) image.crossOrigin = 'anonymous'
+      image.onload = () => resolve(image)
+      image.onerror = () => {
+        if (withCors) attempt(false)
+        else reject(new Error('图片加载失败'))
+      }
+      image.src = dataUrl
+    }
+    attempt(needsCors)
   })
 }
 
