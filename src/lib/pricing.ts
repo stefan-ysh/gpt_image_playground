@@ -24,3 +24,17 @@ export function getUnitPrices(): { currency: string; prices: Record<'1k' | '2k' 
 export function formatCost(amount: number): string {
   return `${CURRENCY}${amount.toFixed(2)}`;
 }
+
+/** 计费渠道：DragonCode 家族（含早期 gpt-image-2 内置渠道，均按 DragonCode 账单结算） */
+export const BILLABLE_PROVIDERS = ['custom-dragoncode-gpt-image-2', 'gpt-image-2'];
+
+/** 从任务 actual_params 解析计费档位；早期任务无 resolution 字段，实际按默认 1k 档计费 */
+export function parseBilledResolution(raw: unknown): '1k' | '2k' | '4k' {
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const resolution = parsed?.resolution;
+    return resolution === '1k' || resolution === '2k' || resolution === '4k' ? resolution : '1k';
+  } catch {
+    return '1k';
+  }
+}

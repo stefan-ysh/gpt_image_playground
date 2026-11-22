@@ -24,6 +24,22 @@ interface AdminUser {
   costToday: number
 }
 
+interface TaskView {
+  id: string
+  prompt: string
+  status: string
+  provider: string
+  size: string | null
+  resolution: string | null
+  createdAt: string
+  finishedAt: string | null
+  error: string | null
+  cost: number
+  billed: boolean
+  billedResolution: string | null
+  images: Array<{ id: string; url: string }>
+}
+
 interface AdminStats {
   usersTotal: number
   usersActive: number
@@ -52,6 +68,9 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true)
   const [resetTarget, setResetTarget] = useState<AdminUser | null>(null)
   const [resetPassword, setResetPassword] = useState('')
+  const [tasksTarget, setTasksTarget] = useState<AdminUser | null>(null)
+  const [userTasks, setUserTasks] = useState<TaskView[]>([])
+  const [tasksLoading, setTasksLoading] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const setConfirmDialog = useStore((s) => s.setConfirmDialog)
   const showToast = useStore((s) => s.showToast)
@@ -123,6 +142,21 @@ export default function AdminUsersPage() {
       if (json?.success) await load()
     } finally {
       setBusyId(null)
+    }
+  }
+
+  async function openTasks(user: AdminUser) {
+    setTasksTarget(user)
+    setUserTasks([])
+    setTasksLoading(true)
+    try {
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(user.id)}/tasks`, { credentials: 'include' })
+      const json = await res.json().catch(() => null)
+      setUserTasks(json?.success ? json.data : [])
+    } catch {
+      showToast('加载任务失败', 'error')
+    } finally {
+      setTasksLoading(false)
     }
   }
 
@@ -340,6 +374,14 @@ export default function AdminUsersPage() {
                       <button
                         type="button"
                         disabled={busyId === user.id}
+                        onClick={() => void openTasks(user)}
+                        className="rounded-lg border border-blue-200 px-2 py-1 text-[11px] text-blue-600 transition hover:bg-blue-50 disabled:opacity-40 dark:border-blue-500/20 dark:text-blue-400 dark:hover:bg-blue-500/10"
+                      >
+                        查看任务
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busyId === user.id}
                         onClick={() => { setResetTarget(user); setResetPassword('') }}
                         className="rounded-lg border border-gray-200 px-2 py-1 text-[11px] text-gray-600 transition hover:bg-gray-100 disabled:opacity-40 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
                       >
@@ -369,6 +411,90 @@ export default function AdminUsersPage() {
           </table>
         </div>
       </div>
+
+      {tasksTarget && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          onClick={() => setTasksTarget(null)}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-xl dark:border-gray-800 dark:bg-gray-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-gray-800">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {tasksTarget.email} 的任务
+                </h3>
+                <p className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+                  共 {userTasks.length} 条 · 计费口径：生图成功（done）的任务 × 档位单价
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTasksTarget(null)}
+                className="rounded-xl px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                关闭
+              </button>
+            </div>
+            <div className="overflow-y-auto px-6 py-4">
+              {tasksLoading && <div className="py-8 text-center text-xs text-gray-400">加载中…</div>}
+              {!tasksLoading && userTasks.length === 0 && (
+                <div className="py-8 text-center text-xs text-gray-400">该用户暂无任务</div>
+              )}
+              <div className="space-y-3">
+                {userTasks.map((task) => (
+                  <div key={task.id} className="rounded-xl border border-gray-100 p-4 dark:border-gray-800">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                            task.status === 'done'
+                              ? 'bg-green-50 text-green-600 dark:bg-green-500/10 dark:text-green-400'
+                              : task.status === 'provider_failed' || task.status === 'submit_unknown'
+                                ? 'bg-red-50 text-red-500 dark:bg-red-500/10 dark:text-red-400'
+                                : 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400'
+                          }`}>
+                            {task.status === 'done' ? '完成' : task.status === 'provider_failed' ? '失败' : task.status === 'submit_unknown' ? '提交未知' : task.status === 'running' ? '生成中' : task.status}
+                          </span>
+                          {task.billed && (
+                            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
+                              计费 {currency}{task.cost.toFixed(2)}（{task.billedResolution}）
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1.5 line-clamp-2 text-xs text-gray-700 dark:text-gray-200">{task.prompt}</p>
+                        <div className="mt-1.5 flex flex-wrap gap-x-3 text-[10px] text-gray-400 dark:text-gray-500">
+                          <span>{fmtDate(task.createdAt)}</span>
+                          {task.size && <span>尺寸 {task.size}</span>}
+                          {task.resolution && <span>档位 {task.resolution}</span>}
+                          <span className="truncate">{task.provider}</span>
+                        </div>
+                        {task.error && (
+                          <p className="mt-1.5 line-clamp-2 text-[11px] text-red-500 dark:text-red-400">{task.error}</p>
+                        )}
+                      </div>
+                      {task.images.length > 0 && (
+                        <div className="flex flex-shrink-0 gap-1.5">
+                          {task.images.slice(0, 4).map((img) => (
+                            <img
+                              key={img.id}
+                              src={img.url}
+                              alt=""
+                              className="h-16 w-16 rounded-lg border border-gray-100 object-cover dark:border-gray-800"
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {resetTarget && (
         <div

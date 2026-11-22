@@ -5,7 +5,7 @@ import { ensurePlaygroundSchema } from '@/lib/db/schema';
 import { handleApiError } from '@/lib/api-error';
 import { requireAdminUser } from '@/lib/db/auth';
 import { getZonedDayStartMs } from '@/lib/db/daily-limit';
-import { getUnitPrice, getUnitPrices } from '@/lib/pricing';
+import { getUnitPrice, getUnitPrices, BILLABLE_PROVIDERS, parseBilledResolution } from '@/lib/pricing';
 
 export const runtime = 'nodejs';
 
@@ -36,20 +36,12 @@ export async function GET() {
     // 注：部分宝塔 MySQL 版本无 JSON 函数，取 actual_params 在 Node 侧解析
     const [resRows] = await pool.query<RowDataPacket[]>(
       `SELECT actual_params, finished_at FROM playground_tasks
-       WHERE status = 'done' AND api_provider = 'custom-dragoncode-gpt-image-2'
-         AND api_profile_snapshot LIKE '%dragoncode.codes%'`
+       WHERE status = 'done' AND api_provider IN ('custom-dragoncode-gpt-image-2', 'gpt-image-2')`
     );
     let costTotal = 0;
     let costToday = 0;
     for (const row of resRows) {
-      let resolution: string | null = null;
-      try {
-        const parsed = typeof row.actual_params === 'string' ? JSON.parse(row.actual_params) : row.actual_params;
-        resolution = typeof parsed?.resolution === 'string' ? parsed.resolution : null;
-      } catch {
-        resolution = null;
-      }
-      const amount = getUnitPrice(resolution);
+      const amount = getUnitPrice(parseBilledResolution(row.actual_params));
       costTotal += amount;
       const finishedAt = Number(row.finished_at);
       if (finishedAt >= todayStart) costToday += amount;

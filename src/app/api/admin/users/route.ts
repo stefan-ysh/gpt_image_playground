@@ -5,7 +5,7 @@ import { ensurePlaygroundSchema } from '@/lib/db/schema';
 import { handleApiError } from '@/lib/api-error';
 import { requireAdminUser } from '@/lib/db/auth';
 import { getTodayCountedImageUsage, getZonedDayStartMs } from '@/lib/db/daily-limit';
-import { getUnitPrice, getUnitPrices } from '@/lib/pricing';
+import { getUnitPrice, getUnitPrices, BILLABLE_PROVIDERS, parseBilledResolution } from '@/lib/pricing';
 
 export const runtime = 'nodejs';
 
@@ -32,20 +32,12 @@ export async function GET() {
     // 按用户统计完成任务花费（actual_params 在 Node 侧解析，规避旧版 MySQL 无 JSON 函数）
     const [resRows] = await pool.query<RowDataPacket[]>(
       `SELECT user_id, actual_params, finished_at FROM playground_tasks
-       WHERE status = 'done' AND api_provider = 'custom-dragoncode-gpt-image-2'
-         AND api_profile_snapshot LIKE '%dragoncode.codes%'`
+       WHERE status = 'done' AND api_provider IN ('custom-dragoncode-gpt-image-2', 'gpt-image-2')`
     );
     const costByUser: Record<string, number> = {};
     const costTodayByUser: Record<string, number> = {};
     for (const row of resRows) {
-      let resolution: string | null = null;
-      try {
-        const parsed = typeof row.actual_params === 'string' ? JSON.parse(row.actual_params) : row.actual_params;
-        resolution = typeof parsed?.resolution === 'string' ? parsed.resolution : null;
-      } catch {
-        resolution = null;
-      }
-      const amount = getUnitPrice(resolution);
+      const amount = getUnitPrice(parseBilledResolution(row.actual_params));
       costByUser[row.user_id] = (costByUser[row.user_id] ?? 0) + amount;
       if (Number(row.finished_at) >= todayStart) {
         costTodayByUser[row.user_id] = (costTodayByUser[row.user_id] ?? 0) + amount;
