@@ -1,5 +1,5 @@
 import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise';
-import type { TaskRecord } from '@/types';
+import type { TaskParams, TaskRecord } from '@/types';
 import type { CurrentUser } from './auth';
 
 const DEFAULT_DAILY_IMAGE_LIMIT = 60;
@@ -129,10 +129,31 @@ export async function getTodayCountedImageUsage(pool: Queryable, userId: string)
   }, 0);
 }
 
-export async function assertDailyImageLimit(pool: Queryable, user: CurrentUser, task: TaskRecord) {
-  const limit = getDailyImageLimit();
-  const used = await getTodayCountedImageUsage(pool, user.id);
-  const requested = getRequestedImageCount(task);
+/**
+ * 解析用户生效限额：playground_users.daily_limit 有值时覆盖全局默认（NULL = 跟随全局）
+ */
+async function resolveEffectiveLimit(pool: Queryable, userId: string): Promise<number> {
+  const globalLimit = getDailyImageLimit();
+  const [limitRows] = await pool.query<RowDataPacket[]>(
+    'SELECT daily_limit FROM playground_users WHERE id = ? LIMIT 1',
+    [userId]
+  );
+  const userLimit = limitRows[0]?.daily_limit;
+  if (userLimit === null || userLimit === undefined) return globalLimit;
+  const parsed = Number(userLimit);
+  if (!Number.isFinite(parsed) || parsed < 0) return globalLimit;
+  return parsed;
+}
+
+/** 校验新任务提交是否超出每日限额（超额抛 DailyImageLimitError → 429） */
+export async function assertDailyImageLimitForNewSubmission(
+  pool: Queryable,
+  userId: string,
+  params: TaskParams | Record<string, unknown> | null | undefined,
+) {
+  const limit = await resolveEffectiveLimit(pool, userId);
+  const used = await getTodayCountedImageUsage(pool, userId);
+  const requested = parseRequestedImageCount(params);
 
   if (used >= limit) {
     throw new DailyImageLimitError(`今日生成额度已用完（已完成/进行中 ${used}/${limit} 张），明天再来吧。`);
@@ -141,4 +162,8 @@ export async function assertDailyImageLimit(pool: Queryable, user: CurrentUser, 
   if (used + requested > limit) {
     throw new DailyImageLimitError(`今日还可提交 ${Math.max(0, limit - used)} 张（含进行中任务），请把本次生成数量调低后再试。`);
   }
+}
+
+export async function assertDailyImageLimit(pool: Queryable, user: CurrentUser, task: TaskRecord) {
+  await assertDailyImageLimitForNewSubmission(pool, user.id, task.params);
 }

@@ -22,18 +22,45 @@ export async function PATCH(
     const targetId = params.id;
     const body = await request.json().catch(() => null);
     const status = typeof body?.status === 'string' ? body.status : '';
-
-    if (!VALID_STATUS.includes(status)) {
-      return NextResponse.json({ success: false, error: '无效的用户状态' }, { status: 400 });
+    // dailyLimit: null = 恢复全局默认（SET daily_limit = NULL）；数字 = 用户专属限额
+    const hasDailyLimitField = body && 'dailyLimit' in body;
+    let dailyLimitValue: number | null = null;
+    if (hasDailyLimitField && body.dailyLimit !== null) {
+      const parsed = Number(body.dailyLimit);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        return NextResponse.json({ success: false, error: '无效的限额数值' }, { status: 400 });
+      }
+      dailyLimitValue = Math.max(0, Math.trunc(parsed));
     }
-    if (targetId === admin.id) {
-      return NextResponse.json({ success: false, error: '不能禁用自己的账号' }, { status: 400 });
+
+    const updates: string[] = [];
+    const values: unknown[] = [];
+
+    if (status) {
+      if (!VALID_STATUS.includes(status)) {
+        return NextResponse.json({ success: false, error: '无效的用户状态' }, { status: 400 });
+      }
+      if (targetId === admin.id && status === 'disabled') {
+        return NextResponse.json({ success: false, error: '不能禁用自己的账号' }, { status: 400 });
+      }
+      updates.push('status = ?');
+      values.push(status);
+    }
+
+    if (hasDailyLimitField) {
+      updates.push('daily_limit = ?');
+      values.push(dailyLimitValue);
+    }
+
+    if (updates.length === 0) {
+      return NextResponse.json({ success: false, error: '没有需要更新的内容' }, { status: 400 });
     }
 
     const pool = await mysqlPool();
+    values.push(targetId);
     const [result] = await pool.query<ResultSetHeader>(
-      'UPDATE playground_users SET status = ? WHERE id = ? AND id <> ?',
-      [status, targetId, admin.id]
+      `UPDATE playground_users SET ${updates.join(', ')} WHERE id = ?`,
+      values
     );
     if (result.affectedRows === 0) {
       return NextResponse.json({ success: false, error: '用户不存在' }, { status: 404 });

@@ -11,6 +11,7 @@ import type {
 import { requireCurrentUser } from '@/lib/db/auth'
 import { mysqlPool } from '@/lib/db/mysql'
 import { ensurePlaygroundSchema } from '@/lib/db/schema'
+import { assertDailyImageLimitForNewSubmission, isDailyImageLimitError } from '@/lib/db/daily-limit'
 import { handleApiError } from '@/lib/api-error'
 
 export const runtime = 'nodejs'
@@ -274,6 +275,19 @@ export async function POST(request: Request) {
         const idempotencyKey = createIdempotencyKey(taskId, 1)
 
         const pool = await mysqlPool()
+        // 每日限额校验（按用户限额，未设置则用全局默认）
+        try {
+            await assertDailyImageLimitForNewSubmission(pool, user.id, taskParams)
+        } catch (error) {
+            if (isDailyImageLimitError(error)) {
+                return NextResponse.json(
+                    { success: false, error: error.message },
+                    { status: 429 },
+                )
+            }
+            throw error
+        }
+
 
         await pool.query(
             `

@@ -3,7 +3,7 @@ import { collectTaskRowImageRefs, getTaskImageIdHash } from './task-images';
 
 let initialized = false;
 let initPromise: Promise<void> | null = null;
-const SCHEMA_VERSION = '2026-11-22-4';
+const SCHEMA_VERSION = '2026-11-22-5';
 const ID_SQL = 'VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin';
 const USER_ID_SQL = 'CHAR(36) CHARACTER SET ascii COLLATE ascii_bin';
 const HASH_SQL = 'CHAR(64) CHARACTER SET ascii COLLATE ascii_bin';
@@ -60,6 +60,7 @@ async function runSchemaInit() {
       role ${ROLE_SQL} NOT NULL DEFAULT 'member',
       status VARCHAR(32) NOT NULL DEFAULT 'active',
       is_admin TINYINT(1) NOT NULL DEFAULT 0,
+      daily_limit INT NULL,
       password_hash VARCHAR(255) NULL,
       login_count INT NOT NULL DEFAULT 0,
       last_login_ip VARCHAR(64) NULL,
@@ -240,8 +241,10 @@ async function runSchemaInit() {
         }
       }
     }
+    // 用户/会话表列补充：无条件执行（列已存在时容错跳过），保证任何历史版本都能升级到位
     for (const colSql of [
       'ADD COLUMN is_admin TINYINT(1) NOT NULL DEFAULT 0',
+      'ADD COLUMN daily_limit INT NULL',
       'ADD COLUMN login_count INT NOT NULL DEFAULT 0',
       'ADD COLUMN last_login_ip VARCHAR(64) NULL',
       'ADD COLUMN last_login_ua VARCHAR(255) NULL',

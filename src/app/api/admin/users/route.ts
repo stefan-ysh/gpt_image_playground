@@ -19,7 +19,7 @@ export async function GET() {
     const todayStart = getZonedDayStartMs('Asia/Shanghai');
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT u.id, u.email, u.display_name, u.status, u.is_admin, u.login_count,
-              u.last_login_ip, u.last_login_ua, u.created_at, u.last_login_at,
+              u.last_login_ip, u.last_login_ua, u.created_at, u.last_login_at, u.daily_limit,
               (SELECT COUNT(*) FROM playground_tasks t WHERE t.user_id = u.id) AS task_count,
               (SELECT COUNT(*) FROM playground_tasks t WHERE t.user_id = u.id AND t.status = 'done') AS done_count,
               (SELECT COUNT(*) FROM playground_tasks t WHERE t.user_id = u.id AND t.status = 'done' AND t.finished_at >= ?) AS done_today,
@@ -55,6 +55,7 @@ export async function GET() {
         status: row.status,
         isAdmin: Boolean(Number(row.is_admin)),
         loginCount: Number(row.login_count) || 0,
+        dailyLimit: row.daily_limit === null || row.daily_limit === undefined ? null : Number(row.daily_limit),
         lastLoginIp: row.last_login_ip || null,
         lastLoginUa: row.last_login_ua || null,
         createdAt: row.created_at,
